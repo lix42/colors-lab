@@ -7,7 +7,7 @@
   "scripts": {
     "start": "vp dev",
     "dev": "vp dev",
-    "build": "vp build",
+    "build": "panda codegen && vp build",
     "serve": "vp preview",
     "prepare": "vp config && panda codegen"
   },

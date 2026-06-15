@@ -1,4 +1,4 @@
-import { type Component, createMemo, createSignal } from "solid-js";
+import { type Component, createSignal } from "solid-js";
 import { css } from "../styled-system/css";
 
 const App: Component = () => {
@@ -6,7 +6,7 @@ const App: Component = () => {
   const [saturation, setSaturation] = createSignal(50);
   const [lightness, setLightness] = createSignal(50);
 
-  const color = createMemo(() => `hsl(${hue()}deg ${saturation()}% ${lightness()}%)`);
+  const color = () => `hsl(${hue()}deg ${saturation()}% ${lightness()}%)`;
 
   return (
     <main class={css({ maxW: "3xl", mx: "auto", px: "4" })}>
