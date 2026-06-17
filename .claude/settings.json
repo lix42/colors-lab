@@ -1,0 +1,19 @@
+{
+  "enabledPlugins": {
+    "context-mode@context-mode": false,
+    "ship@lix42": true,
+    "claude-md-management@claude-plugins-official": true,
+    "commit-commands@claude-plugins-official": true,
+    "frontend-design@claude-plugins-official": true,
+    "pr-review-toolkit@claude-plugins-official": true
+  },
+  "extraKnownMarketplaces": {
+    "lix42": {
+      "source": {
+        "source": "github",
+        "repo": "lix42/claude-plugins"
+      },
+      "autoUpdate": true
+    }
+  }
+}

@@ -13,6 +13,12 @@ app.config.timestamp_*.js
 # dependencies
 /node_modules
 
+# Panda CSS generated output
+styled-system
+
+# Local, machine-specific Claude Code settings
+.claude/settings.local.json
+
 # IDEs and editors
 /.idea
 .project
