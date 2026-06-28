@@ -89,4 +89,4 @@ For GitHub Actions, consider using [`voidzero-dev/setup-vp`](https://github.com/
 
 # Styling
 
-This project styles with **Panda CSS**. The generated `styled-system/` folder is gitignored — run `pnpm panda codegen` to (re)generate it after pulling or changing `panda.config.ts`. See [`docs/panda-css.md`](docs/panda-css.md) for the day-to-day reference (imports, tokens, recipes, shorthand-vs-longhand rules, and common gotchas).
+This project styles with **Panda CSS**. The generated `styled-system/` folder is gitignored — run `vp exec panda codegen` to (re)generate it after pulling or changing `panda.config.ts`. See [`docs/panda-css.md`](docs/panda-css.md) for the day-to-day reference (imports, tokens, recipes, shorthand-vs-longhand rules, and common gotchas).

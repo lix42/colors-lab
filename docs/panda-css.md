@@ -5,21 +5,21 @@
 Run after config changes or pulling remote changes:
 
 ```sh
-pnpm panda codegen
+vp exec panda codegen
 ```
 
-The `styled-system/` folder is generated output — do not commit it, treat it like `node_modules`. Add `prepare: "panda codegen"` to `package.json` so it regenerates on install.
+The `styled-system/` folder is generated output — do not commit it, treat it like `node_modules`. It's already wired into the `package.json` `prepare` script (`vp config && panda codegen`), so it regenerates automatically on install.
 
 Watch mode during development:
 
 ```sh
-pnpm panda --watch
+vp exec panda --watch
 ```
 
 Debug token/style extraction:
 
 ```sh
-pnpm panda debug
+vp exec panda debug
 ```
 
 ## What to Import
@@ -61,7 +61,7 @@ Semantic tokens support conditions (light/dark, etc.):
 ```ts
 semanticTokens: {
   colors: {
-    success: { value: { _light: '{colors.green500}', _dark: '{colors.green200}' } }
+    success: { value: { _light: '{colors.green.500}', _dark: '{colors.green.200}' } }
   }
 }
 ```
