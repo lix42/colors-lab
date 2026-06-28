@@ -1,6 +1,6 @@
 {
   "enabledPlugins": {
-    "context-mode@context-mode": false,
+    "context-mode@context-mode": true,
     "ship@lix42": true,
     "claude-md-management@claude-plugins-official": true,
     "commit-commands@claude-plugins-official": true,
@@ -15,5 +15,21 @@
       },
       "autoUpdate": true
     }
+  },
+  "permissions": {
+    "allow": [
+      "mcp__plugin_context-mode_context-mode__ctx_execute",
+      "mcp__plugin_context-mode_context-mode__ctx_fetch_and_index",
+      "WebFetch(domain:panda-css.com)",
+      "Bash(git checkout *)",
+      "Bash(gh pr *)",
+      "Bash(gh api *)",
+      "mcp__plugin_context7_context7__query-docs",
+      "Bash(vp exec *)",
+      "Bash(vp build *)",
+      "Bash(git pull *)",
+      "Bash(git rev-list *)",
+      "Bash(vp fmt *)"
+    ]
   }
 }
