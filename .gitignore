@@ -16,6 +16,9 @@ app.config.timestamp_*.js
 # Panda CSS generated output
 styled-system
 
+# Storybook build output
+storybook-static
+
 # Local, machine-specific Claude Code settings
 .claude/settings.local.json
 
