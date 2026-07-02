@@ -1,5 +1,6 @@
 import { type Component, createSignal } from "solid-js";
 import { css } from "../styled-system/css";
+import { Slider } from "./Slider";
 
 const App: Component = () => {
   const [hue, setHue] = createSignal(50);
@@ -37,28 +38,6 @@ const App: Component = () => {
         <Slider label="Lightness" max={100} value={lightness()} onInput={setLightness} />
       </div>
     </main>
-  );
-};
-
-const Slider: Component<{
-  label: string;
-  max: number;
-  value: number;
-  onInput: (value: number) => void;
-}> = (props) => {
-  return (
-    <label class={css({ display: "flex", alignItems: "center", gap: "3" })}>
-      <span class={css({ w: "24", color: "gray.700" })}>{props.label}</span>
-      <input
-        class={css({ flex: "1" })}
-        type="range"
-        min="0"
-        max={props.max}
-        value={props.value}
-        onInput={(e) => props.onInput(Number(e.currentTarget.value))}
-      />
-      <span class={css({ w: "12", textAlign: "right", color: "gray.500" })}>{props.value}</span>
-    </label>
   );
 };
 

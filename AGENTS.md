@@ -90,3 +90,13 @@ For GitHub Actions, consider using [`voidzero-dev/setup-vp`](https://github.com/
 # Styling
 
 This project styles with **Panda CSS**. The generated `styled-system/` folder is gitignored — run `vp exec panda codegen` to (re)generate it after pulling or changing `panda.config.ts`. See [`docs/panda-css.md`](docs/panda-css.md) for the day-to-day reference (imports, tokens, recipes, shorthand-vs-longhand rules, and common gotchas).
+
+# Storybook
+
+Component development uses **Storybook** (framework `storybook-solidjs-vite`), running on the Vite+/Rolldown fork.
+
+- **Run it:** `vp run storybook` (dev) and `vp run build-storybook` (build) — _not_ `vp storybook`; Storybook isn't a `vp` built-in, so it only resolves via `vp run <script>`.
+- **Stories** live at `src/**/*.stories.tsx` (CSF3 + `satisfies Meta<...>`). Import `Meta`/`StoryObj` from `storybook-solidjs-vite` and `fn` from `storybook/test`.
+- **Panda styling in stories:** `.storybook/preview.ts` imports `src/index.css` (the `@layer` entry) so `css()` output applies; Storybook's Vite builder auto-loads `postcss.config.cjs`.
+- **Gotcha:** files in `.storybook/` need `/// <reference types="vite/client" />` for CSS side-effect imports — they don't inherit the root `tsconfig.json` `types` the way `src/` does.
+- Storybook's exact `vite: 7.1.11` peer is unmet by the fork; the install-time peer warnings are expected and harmless (build/dev confirmed working).

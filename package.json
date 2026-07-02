@@ -9,6 +9,8 @@
     "dev": "vp dev",
     "build": "vp build",
     "serve": "vp preview",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build",
     "prepare": "vp config && panda codegen"
   },
   "dependencies": {
@@ -16,7 +18,11 @@
   },
   "devDependencies": {
     "@pandacss/dev": "^1.11.3",
+    "@storybook/addon-a11y": "10.4.4",
+    "@storybook/addon-docs": "10.4.4",
     "solid-devtools": "^0.34.3",
+    "storybook": "10.4.4",
+    "storybook-solidjs-vite": "10.5.2",
     "typescript": "^6.0.3",
     "vite": "npm:@voidzero-dev/vite-plus-core@latest",
     "vite-plugin-solid": "^2.11.12",
