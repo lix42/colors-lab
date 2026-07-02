@@ -9,7 +9,7 @@ export const Slider: Component<{
 }> = (props) => {
   return (
     <label class={css({ display: "flex", alignItems: "center", gap: "3" })}>
-      <span class={css({ w: "24", color: "gray.700" })}>{props.label}</span>
+      <span class={css({ w: "24", flexShrink: 0, color: "gray.700" })}>{props.label}</span>
       <input
         class={css({ flex: "1" })}
         type="range"
