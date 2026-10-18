@@ -1,6 +1,9 @@
 import { defineConfig } from "@pandacss/dev";
 
 export default defineConfig({
+  // v2 no longer injects these implicitly; without them there are no default utilities, tokens or conditions
+  presets: ["@pandacss/preset-base", "@pandacss/preset-panda"],
+
   // Whether to use css reset
   preflight: true,
 

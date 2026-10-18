@@ -104,6 +104,10 @@ css({ padding: "20px", p: "10px" }); // p wins  → only p_10px class generated
 
 **Styles not applied** — check the `@layer` declaration is present and `styled-system/styles.css` (or PostCSS output) is imported at the root.
 
+**Most utilities and tokens missing (v2)** — Panda v2 no longer injects the default presets. Keep `presets: ["@pandacss/preset-base", "@pandacss/preset-panda"]` in `panda.config.ts`; without it, `css()` calls silently generate little or no CSS.
+
+**Class names don't match the shorthand** — v2 names generated classes after the longhand, so `rounded: "lg"` emits `.bdr_lg`, not `.rounded_lg`. Search the built CSS by property, not by shorthand.
+
 **Dynamic asset URLs** — Panda can't resolve Vite asset imports. Use inline `style` instead:
 
 ```tsx

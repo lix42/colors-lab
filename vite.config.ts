@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -34,5 +35,10 @@ export default defineConfig({
   },
   build: {
     target: "esnext",
+  },
+  test: {
+    environment: "jsdom",
+    // vite-plugin-solid would inject this implicitly; listing it keeps the jest-dom matchers visible
+    setupFiles: ["@testing-library/jest-dom/vitest"],
   },
 });
