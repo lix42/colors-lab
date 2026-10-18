@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Pin an exact release: the setup-vp v1 tag no longer receives updates.
+      # The vp version itself comes from the vite-plus catalog entry in pnpm-workspace.yaml.
+      - uses: voidzero-dev/setup-vp@v1.21.2
+        with:
+          node-version-file: .node-version
+          cache: true
+
+      - run: vp check
+      - run: vp test
+      - run: vp build
