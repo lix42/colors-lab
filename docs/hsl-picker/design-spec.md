@@ -1,84 +1,409 @@
 # HSL Cube Picker — Design Spec
 
-> **Status: outline.** Sections are placeholders, to be filled in a follow-up PR. Requirements live in [`requirements.md`](requirements.md).
+This document describes _how_ the picker is built in this repo (Solid, Panda CSS, Vite+, Vitest, Storybook). _What_ it does and _why_ live in [`requirements.md`](requirements.md); where the two disagree, this spec wins. Problems found in the requirements are called out here, not edited back into them.
 
-This document describes _how_ the picker is built in this repo (Solid, Panda CSS, Vite+, Vitest, Storybook). Once filled in, it is the input for splitting the work into tasks.
+Items marked **Proposed** settle something the requirements left open. They are this spec's recommendation, open to change in review.
 
 ## 1. Scope and non-goals
 
+In scope:
+
+- The `HslPicker` component: faces, turning, ceiling and depth slider, zoom, peek strips, confirm/cancel.
+- The palette demo page that hosts it, replacing the current `src/App.tsx` demo.
+- Unit tests for the pure core, component tests, and Storybook stories.
+
+Non-goals (for this iteration):
+
+- Other color spaces (OKLCH, LAB) or alpha. Output is HSL plus a hex string for display.
+- Physical-cube rotation (24 orientations, flipped axes). The requirements fix the six-face model.
+- Publishing the picker as a package, SSR, or routing.
+
 ## 2. Architecture overview
 
-- Module layout under `src/`
-- Pure core vs. Solid components vs. demo host (palette page)
-- Existing code: what happens to `src/Slider.tsx` (and its story and tests) and the current HSL demo in `src/App.tsx` — reuse, adapt (e.g. vertical slider), or remove
+Three layers, each depending only on the layers before it:
+
+1. **Pure core** (`src/hsl/`): plain TypeScript, no Solid or DOM imports. Color math, the cube model, the zoom lattice, the picker state reducer, and gesture classification. Everything here is a pure function with unit tests, in line with the repo's preference for pure functions over classes.
+2. **Components** (`src/picker/`): Solid components that render the state and translate DOM events into reducer actions. They hold no logic beyond wiring.
+3. **Demo host** (`src/palette/`): the palette page that opens the picker and stores the results.
+
+### Module layout
+
+```
+src/
+  hsl/
+    color.ts         Hsl type, normalize/round, toCss, toHex, contrastInk
+    cube.ts          Variable, Face, START_FACE, turn(), variable metadata
+    lattice.ts       axisWindow(): patch values for one axis at a zoom level
+    face.ts          faceCells(), peekStrips(), ceilingStops()
+    state.ts         PickerState, PickerAction, pickerReducer()
+    gestures.ts      pointerGesture(), pinchProgress(), velocity(), wheel gesture reducer
+    motion.ts        turnFrame(), zoomFrame(), dropFrame(), settle()
+    theme.ts         screenScheme(), tintedSurface()
+    *.test.ts        one test file per module
+  picker/
+    HslPicker.tsx    public component; owns state; animation driver
+    transition.ts    transition controller: tracked progress, triggered playback, settling
+    PickerFace.tsx   one face: ceiling, grid region, zoom control, hints
+    Ceiling.tsx      collapsed perspective gradient (a button)
+    DepthPanel.tsx   expanded panel: swatch + vertical DepthSlider
+    FaceGrid.tsx     5 × 7 patch radiogroup with keyboard handling
+    PeekStrip.tsx    one edge strip (a button)
+    ZoomControl.tsx  − / level / + buttons
+    useGestures.ts   pointer, wheel and dblclick wiring for the grid
+    *.stories.tsx, *.test.tsx
+  palette/
+    PalettePage.tsx  landing page, + button, picker host
+    storage.ts       palette persistence (pure parse/serialize + thin I/O)
+  App.tsx            renders PalettePage
+```
+
+### Existing code
+
+- **`src/App.tsx`** is reduced to rendering `PalettePage`. The three-slider demo is removed.
+- **`src/Slider.tsx`**, its story and its tests are **removed** in the final task (**Proposed**). Its layout (label left, number right, horizontal) does not fit the depth slider, which is vertical and styled as a gradient track. `DepthSlider` (inside `DepthPanel.tsx`) is a new component. The `Number(e.currentTarget.value)` regression test carries over to `DepthSlider`'s tests.
 
 ## 3. Domain model (pure functions)
 
 ### 3.1 Color types and conversions
 
-- HSL value type, `hsl()` / hex formatting, contrast ink
+```ts
+type Hsl = { h: number; s: number; l: number }; // h in [0, 360), s and l in [0, 100]
+
+normalizeHue(h: number): number;        // ((h % 360) + 360) % 360
+roundHsl(c: Hsl): Hsl;                  // each to 0.1, then normalizeHue (359.96 → 0)
+toCss(c: Hsl): string;                  // "hsl(210 64% 56%)"
+toHex(c: Hsl): string;                  // "#4A8FD6", uppercase
+contrastInk(c: Hsl): "dark" | "light";  // WCAG relative luminance; higher contrast ratio wins
+```
+
+- `roundHsl` is the single place values are rounded. The reducer stores only rounded colors, so stored, displayed and returned values always agree (requirements: _Callback value_).
+- `contrastInk` returns a token name, not a hex color, so components map it to theme tokens.
 
 ### 3.2 Cube state
 
-- Face (depth / x / y assignment), selection, zoom level
+```ts
+type Variable = "h" | "s" | "l";
+type Face = { depth: Variable; x: Variable; y: Variable }; // all three distinct
+const START_FACE: Face = { depth: "l", x: "h", y: "s" };
+
+const VARIABLES: Record<Variable, { name: string; unit: "°" | "%"; max: number; wraps: boolean }>;
+// h: Hue, °, 360, wraps · s: Saturation, %, 100 · l: Lightness, %, 100
+```
+
+`Face` is a plain object with six valid values; tests enumerate them.
 
 ### 3.3 Turning
 
-- Turn rule as a pure function; direction → swap
+```ts
+type TurnAxis = "horizontal" | "vertical";
+type TurnDirection = "left" | "right" | "up" | "down"; // animation only
+
+turn(face: Face, axis: TurnAxis): Face;
+// horizontal: { depth: face.x, x: face.depth, y: face.y }
+// vertical:   { depth: face.y, x: face.x,     y: face.depth }
+
+axisOf(direction: TurnDirection): TurnAxis;
+```
+
+The direction never affects the resulting face (requirements: opposite swipes do the same swap); it is kept only so the animation knows which way to rotate. Tests assert that alternating `horizontal` and `vertical` six times visits all six faces and returns to `START_FACE`, and that `turn(turn(f, a), a)` equals `f`.
 
 ### 3.4 Grid window and zoom
 
-- Fixed per-level lattice values; window of _n_ consecutive values centered on the one nearest the selection; S/L shift to stay inside 0–100%, hue wraps
-- Exact vs. approximate selection (solid vs. dashed ring)
+```ts
+type ZoomLevel = 0 | 1 | 2 | 3 | 4; // shown as 2^z: 1×, 2×, 4×, 8×, 16×
+
+type AxisWindow = {
+  values: number[]; // n patch values, ascending (hue: ascending modulo 360)
+  nearest: number;  // index of the value nearest the selection
+  exact: boolean;   // selection equals values[nearest] within 0.05
+};
+
+axisWindow(variable: Variable, n: number, zoom: ZoomLevel, center: number, selected: number): AxisWindow;
+```
+
+The lattice is fixed per variable, axis length and zoom level (requirements: _Each level has fixed patch values_):
+
+- **S and L.** `steps = (n − 1) · 2^z`, `step = 100 / steps`; the lattice is `k · step` for integer `k` in `[0, steps]`. With `c = round(center / step)`, the window starts at `clamp(c − ⌊n/2⌋, 0, steps − (n − 1))` and holds `n` consecutive lattice values. It always fits, so there are no empty cells.
+- **H.** `steps = n · 2^z`, `step = 360 / steps`. With `c = round(center / step) mod steps`, the window is `k = c − ⌊n/2⌋ … c + ⌈n/2⌉ − 1`, each value `normalizeHue(k · step)`. Hue never shifts; it wraps.
+- **Window center** (**Proposed**; see [§11](#11-open-questions-carried-from-requirements)). The window is centered on `state.center` (§3.6), not on the selection, so picking a patch never moves the grid under the pointer. The center resets to the selection on turn and zoom. `axisWindow` itself owns the other case: when `selected` lies outside the window computed from `center` (for example a parent's new `value` in controlled mode), it centers on `selected` instead, so `nearest` and `exact` always describe a selection inside the window.
+- **Exact vs. nearest.** `exact` uses a 0.05 tolerance (half the stored precision), because a picked lattice value is stored rounded to 0.1 (16.67 becomes 16.7).
+- Values are computed as `k · step`, never by accumulating `step`, so there is no drift.
+
+Grid dimensions are constants: `GRID_COLUMNS = 5` (x) and `GRID_ROWS = 7` (y).
 
 ### 3.5 Peek strips and ceiling gradient
+
+```ts
+type Cell = { color: Hsl; row: number; col: number; ring: "none" | "exact" | "approx" };
+
+faceCells(face: Face, center: Hsl, selection: Hsl, zoom: ZoomLevel): Cell[]; // GRID_ROWS × GRID_COLUMNS, top row first
+peekStrips(face: Face, center: Hsl, selection: Hsl, zoom: ZoomLevel): { left: Hsl[]; right: Hsl[]; top: Hsl[]; bottom: Hsl[] };
+ceilingStops(face: Face, selection: Hsl, count?: number): Hsl[]; // full depth range, max first
+```
+
+- **Cells**: x values from `axisWindow(face.x, GRID_COLUMNS, …)`; y values from `axisWindow(face.y, GRID_ROWS, …)`, reversed so the top row is the maximum. The cell at both axes' `nearest` gets a ring: `exact` only when both axes are exact, otherwise `approx`.
+- **Peek strips** follow the requirements' definition. Left/right: `axisWindow(face.depth, GRID_COLUMNS, …)` gives the depth window the new face would show on x; the strips use its first and last values, one cell per current y value. Top/bottom: `axisWindow(face.depth, GRID_ROWS, …)`, last and first values, one cell per current x value.
+- **Ceiling stops**: `count` (default 13) evenly spaced depth values from max to 0 (hue: 359 to 0), with the other two variables at the selection. The ceiling is never zoomed.
+
+### 3.6 Picker state
+
+All picker behavior is one reducer, so every interaction is testable without the DOM.
+
+```ts
+type PickerState = {
+  face: Face;
+  selection: Hsl;   // always rounded
+  center: Hsl;      // grid window center (§3.4)
+  zoom: ZoomLevel;
+  expanded: boolean; // ceiling panel open
+};
+
+type PickerAction =
+  | { type: "pick"; color: Hsl }                      // patch click / keyboard
+  | { type: "setDepth"; value: number }               // depth slider
+  | { type: "turn"; direction: TurnDirection }        // drag, wheel, peek strip, keyboard
+  | { type: "zoom"; delta: 1 | -1 }                   // buttons, dblclick, pinch, Shift/Ctrl+wheel, keyboard
+  | { type: "toggleExpanded" }                        // ceiling click or drag, Done
+  | { type: "move"; dx: -1 | 0 | 1; dy: -1 | 0 | 1 }; // arrow keys in the grid
+
+initialPickerState(initial?: Hsl): PickerState; // START_FACE, zoom 0, collapsed
+pickerReducer(state: PickerState, action: PickerAction): PickerState;
+```
+
+Rules the reducer enforces:
+
+- `turn` collapses the panel (`expanded: false`). `turn` and `zoom` reset `center` to the selection.
+- `zoom` clamps to 0…4; a no-op zoom returns the same state object, so no transition starts.
+- `move` steps to the neighbouring patch. At the grid edge it scrolls the window one lattice step along that axis; S and L stop at 0 and 100. (**Deviation**: the requirements say `move` stops at the grid edges. With a window that no longer follows the selection, scrolling is the only way to reach values outside it from the keyboard.)
+- `pick` never changes `center`.
+- `pick`, `move` and `setDepth` store `roundHsl` of the new color.
 
 ## 4. Components
 
 ### 4.1 `HslPicker` (public API, confirm callback)
 
+```ts
+type HslPickerProps = {
+  value?: Hsl; // controlled: the selection; update it from onChange
+  initialColor?: Hsl; // uncontrolled: starting selection, default hsl(210 64% 56%); ignored when value is set
+  onChange?: (color: Hsl) => void; // every selection change, both modes; rounded, h in [0, 360)
+  onConfirm: (color: Hsl) => void; // rounded, h in [0, 360)
+  onCancel: () => void;
+};
+```
+
+- Owns `const [state, setState] = createSignal(initialPickerState(props.value ?? props.initialColor))`. The displayed selection is `selection = () => (props.value !== undefined ? roundHsl(props.value) : state().selection)`.
+- `view = () => ({ ...state(), selection: selection() })` is the state as displayed. `dispatch(a)` runs `pickerReducer(view(), a)`, stores the result, and calls `onChange` when the selection changed. In controlled mode the stored selection is ignored, so a pick shows only once the parent passes it back as `value`, and the parent can reject or adjust it.
+- Only the selection is controllable. The face, zoom and panel stay internal in both modes. The mode is fixed at mount by whether `value` is defined, as in React; switching later isn't supported.
+- Derived data (`faceCells`, `peekStrips`, `ceilingStops`) are `createMemo`s over `view()`, so in controlled mode they follow the parent's `value`.
+- Renders the header (close button, title), the current `PickerFace` (plus the target's during a turn, [§6.1](#61-transition-controller)), and the confirm button. The confirm button's background is the selection ([§7](#7-styling)) and its label is `toCss(selection)`.
+- Owns the transition controller ([§6.1](#61-transition-controller)): `turn`, `zoom` and `toggleExpanded` go through it instead of straight to `dispatch`.
+
 ### 4.2 `PickerFace`
+
+Presentational. Props: the memoized face data, `expanded`, `zoom`, and `dispatch`. Top to bottom it lays out: the depth label row, `Ceiling`, the grid region (y-axis label, top strip, left strip, `FaceGrid`, right strip, bottom strip, x-axis labels), and a footer row with `ZoomControl` and the hints. When `expanded`, `DepthPanel` is absolutely positioned over the grid region as its sibling, not inside it, so slider pointer and wheel events never reach the turn and pinch listeners. The grid region is `inert` while expanded, so its hidden patches and strips leave the tab order.
+
+Styles come from one `sva` slot recipe colocated in the file (slots: `root`, `depthLabel`, `gridRegion`, `axisLabel`, `footer`, `hint`).
 
 ### 4.3 `Ceiling` and expanded slider panel
 
+- **`Ceiling`** is a `<button aria-expanded>` labelled "_Lightness 56%. Open slider_" (or "_Close slider_"). Inside, a span is tilted with CSS 3D: the wrapper sets `perspective: 300px; perspective-origin: 50% 100%`; the span sets `width: 72%; transform-origin: 50% 100%; transform: rotateX(-58deg)`. The gradient and the marker position are CSS variables ([§7](#7-styling)).
+- **`DepthPanel`** contains the depth name and value (as the slider's `<label>`), a Done button, the swatch (color, `toCss`, `toHex`, ink from `contrastInk`), and `DepthSlider`.
+- **`DepthSlider`** is a native `<input type="range">` with `writing-mode: vertical-lr; direction: rtl` (maximum at the top), `step=1`, `max` 100 (hue: 359), `aria-valuetext` set to the formatted value, and `onInput` dispatching `setDepth` with `Number(e.currentTarget.value)`. A native input gives keyboard and screen-reader behavior for free.
+
 ### 4.4 `FaceGrid` and patches
+
+- One container with `role="radiogroup"` and an `aria-label` such as "_Hue by Saturation at Lightness 56%_". Each patch is a `<button role="radio" aria-checked>` labelled with `toCss(color)`. (**Proposed**: radiogroup over the ARIA grid pattern. It conveys single selection directly; the 2D arrow keys are documented in the group's description.)
+- **Roving tabindex**: only the ringed patch has `tabIndex=0`; the rest have `-1`. Tab enters and leaves the grid in one stop.
+- Rendered with `<Index>` over the 35 cells. The count never changes, only cell contents do, so `Index` updates in place without recreating buttons or losing focus.
+- Patch size is fixed at 48 px with a 4 px gap. The ring is a `cva` variant: `ring: none | exact | approx` (solid vs. dashed outline).
 
 ### 4.5 `PeekStrip`
 
+A `<button>` with an `aria-label` naming the turn ("_Turn sideways: put Hue on the slider_"). It renders the strip's colors as flex children and dispatches `turn` with its direction. The strip is 14 px thick; a `::after` pseudo-element extends the hit area by 10 px on each side.
+
 ### 4.6 Zoom control
+
+Two `<button>`s ("Zoom out", "Zoom in", disabled at the limits) around the level text (`1×` … `16×`), dispatching `zoom`.
 
 ### 4.7 Palette demo page
 
+`PalettePage` holds `palette: Hsl[]` and `pickerOpen: boolean` signals. It renders the card grid (swatch, `toCss`, `toHex`) and the floating + button. While the picker is open it renders `HslPicker` full screen with `initialColor` set to the last palette entry; `onConfirm` appends and closes, and `onCancel` closes. Persistence: [§9](#9-state-and-persistence).
+
 ## 5. Interaction and input handling
 
-- Pointer swipe, wheel, Shift + wheel, double-click, Alt + double-click
-- Gesture thresholds and throttling; swipe vs. click disambiguation
-- Pinch-to-zoom (pending open question)
+All handlers live in `useGestures.ts` (a function that takes the grid region, ceiling and panel header elements, `dispatch` and the transition controller, and registers listeners) and call the pure helpers in `src/hsl/gestures.ts`. Drags and pinches start tracked transitions; everything else starts triggered ones ([§6](#6-animation)).
+
+### 5.1 Pointer swipe
+
+- Turn and pinch listeners sit on the grid region only (patches and peek strips), never on the ceiling, panel, zoom control or confirm button. The panel drag has its own listeners on the ceiling and the panel header ([§6.4](#64-panel-drop)). Both have `touch-action: none` so the browser doesn't pan or scroll.
+- A pure reducer, `pointerGesture(state, event)`, tracks the active pointers through `pointerdown`, `pointermove`, `pointerup` and `pointercancel`. It emits `start` once a one-pointer drag passes a 10 px slop and locks its dominant axis into a `TurnDirection` (drag left → `"right"`, so the face from the right comes in; drag up → `"down"`), then `progress` on each move, and `end` with the release velocity. A lift before the slop emits nothing, so it stays a click.
+- **Drag vs. click**: once a drag passes the slop, the grid region calls `setPointerCapture`, so `pointermove` and `pointerup` keep arriving after the pointer leaves the grid and the drag always settles. A one-shot capture-phase listener on the grid region swallows the `click` that follows, so the patch under the finger isn't picked; it is disarmed on the next `pointerdown` in case no click came. Capture starts only after the slop, so taps keep their normal click target.
+- `pointercancel` settles the tracked transition as a cancel.
+
+### 5.2 Wheel and Shift + wheel
+
+- One `wheel` listener on the grid region, added with `addEventListener(…, { passive: false })` in `onMount` and removed in `onCleanup`, so it can `preventDefault()` page scrolling.
+- A pure reducer, `wheelGesture(state, { dx, dy, shift, time }) → { state, action | null }`, groups events into **gestures**. A gesture ends after 150 ms with no wheel events. Within one gesture, deltas accumulate until one axis passes 30 px, which emits exactly one action; the rest of the gesture is ignored. That covers trackpad inertia (requirements: _at most once_).
+- With `shift`, the action is `zoom`, using `dy || dx` because macOS turns Shift + wheel into horizontal deltas; scrolling up or left zooms in. Without `shift`, the action is `turn`, with the same direction mapping as swipes. Ctrl counts as Shift (`shift` is `shiftKey || ctrlKey`): browsers report a trackpad pinch as wheel events with `ctrlKey` set, which would otherwise zoom the page.
+
+### 5.3 Double-click
+
+`dblclick` on a patch starts a `zoom` with `delta: e.altKey ? -1 : 1`. The two `click`s before it have already picked the patch, and a pick never moves the window ([§3.4](#34-grid-window-and-zoom)), so both clicks land on the same color.
+
+### 5.4 Pinch-to-zoom
+
+A swipe is a one-pointer gesture, so pointer events from a pinch are never classified as one.
+
+- When a second pointer goes down, `pointerGesture` turns the gesture into a pinch for the rest of its life. No swipe is classified, even after one finger lifts, and the click after it is swallowed as in [§5.1](#51-pointer-swipe). If a one-finger turn is already tracking, it cancels and settles back, and the pinch starts from there. A third pointer is ignored.
+- `pinchProgress(anchor, distance)` turns the pinch into tracked zoom progress, one level per doubling of the distance between the two pointers ([§6.3](#63-zoom)).
+- Zoom stays centered on the selection (requirements: _Zoom centers on the selected color_); the pinch midpoint is ignored.
+- The gesture ends when the last pointer lifts or is cancelled.
+
+### 5.5 Keyboard
+
+In the grid (**Proposed**, resolving the requirements' _Keyboard turning_ question):
+
+| Key           | Action                                                         |
+| ------------- | -------------------------------------------------------------- |
+| Arrow keys    | `move` to the neighbouring patch (scrolls at edges)            |
+| Shift + Arrow | `turn` in that direction                                       |
+| `+` / `-`     | `zoom` in / out                                                |
+| Enter / Space | `pick` (the focused patch is already selected; kept for habit) |
+
+Shift + Arrow only applies while focus is in the grid, so it cannot clash with the depth slider's own arrow keys. After a turn, focus stays on the grid's ringed patch.
 
 ## 6. Animation
 
-- 3D turn (transform origin, perspective, direction)
-- Ceiling drop, zoom transitions
-- `prefers-reduced-motion`
+Turn, zoom and the panel drop are **transitions**: each moves the picker from its current state to a target state. Every transition plays in one of two modes (**Proposed** terms):
+
+- **Triggered**: a click, key, wheel gesture or double-click starts it, and it plays to the end on its own.
+- **Tracked**: a drag or pinch drives its progress directly, from 0 (the current state) to 1 (the target). When the finger lifts, the transition **settles**: it either **commits** (plays on to 1) or **cancels** (plays back to 0).
+
+| Transition | Triggered by                                                 | Tracked by                                                     | Tracked progress                                                                   | Base duration |
+| ---------- | ------------------------------------------------------------ | -------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ------------- |
+| Turn       | Peek strip, Shift + Arrow, wheel                             | One-finger drag on the grid                                    | Drag distance along the locked axis ÷ face width (horizontal) or height (vertical) | 500 ms        |
+| Zoom       | Zoom buttons, double-click, `+` / `-`, Shift or Ctrl + wheel | Pinch on the grid                                              | `log2(pointer distance ÷ anchor distance)`, one level per doubling                 | 320 ms        |
+| Panel drop | Ceiling click, Done button                                   | Drag down from the ceiling; drag up on the open panel's header | Drag distance ÷ panel height                                                       | 420 ms        |
+
+### 6.1 Transition controller
+
+- `src/picker/transition.ts` holds one transition at a time: `{ action, target, mode, progress }`, where `target = pickerReducer(state, action)`. Because the reducer is pure, the target is known before anything moves.
+- The state changes on commit, not at the start. While a transition runs, `HslPicker` renders both states: the target face beside the current one for a turn, the target grid over the current one for a zoom, and the panel for a drop. `target` is a preview for rendering only. On commit the controller applies `pickerReducer(currentState, action)` to the state at that moment, so picks, moves and depth changes made during the transition survive; on cancel it drops the preview. Both read `view()` (§4.1), so controlled mode previews the parent's value.
+- Frames are pure functions of progress in `src/hsl/motion.ts`: `turnFrame(direction, p)`, `zoomFrame(delta, p)` and `dropFrame(p)` return the transform and opacity of each animated element at progress `p`.
+- **Tracked**: each `pointermove` sets the progress, and the next animation frame writes `frame(p)` to the elements' styles. Progress maps linearly to the finger, with no easing.
+- **Triggered and settling**: one `element.animate([frame(from), frame(to)], { duration, easing: "cubic-bezier(.2, .7, .2, 1)" })` per element, from the current progress to 0 or 1. The duration is the base duration × the distance left, at least 120 ms, so a nearly finished drag settles quickly.
+- **Settle rule**: a pure `settle(progress, velocity)` returns `"commit"` or `"cancel"`. A fling decides by its direction: at least 0.5 px/ms toward the target commits, even from a small progress, and the same speed back cancels. Otherwise it commits when progress ≥ 0.5. `velocity(samples)` in `gestures.ts` reads the pointer samples of the last 100 ms. A pinch settles by progress alone.
+- **Interruption**: input that arrives while a transition plays or settles finishes it at once, applying its commit or cancel, and then starts. Triggered input (keys, wheel, buttons) during a tracked drag is ignored.
+- **Reduced motion** (**Deviation**: the requirements disable these animations outright): triggered transitions and settles apply instantly, with no `animate()`. A tracked transition shows no rotation, scaling or drop: the target cross-fades in as the finger moves, so the gesture still works and commits the same way, without 3D motion. Any CSS transitions use Panda's `_motionReduce` condition.
+- The ceiling's static tilt is plain CSS.
+
+### 6.2 Turn
+
+- Past a 10 px slop, a one-finger drag locks its dominant axis and direction ([§5.1](#51-pointer-swipe)). Dragging back past the start holds progress at 0; it never switches to the opposite turn mid-drag.
+- `turnFrame`: both faces rotate about the cube's center, `transform-origin: 50% 50% calc(var(--face-width) / -2)` for left and right turns and `calc(var(--face-height) / -2)` for up and down, so the two faces share an edge, under `perspective(1200px)`. The current face goes from none to `rotateY(∓90deg)` (`rotateX` for up and down) and fades 1 → 0.2; the target face goes from `rotateY(±90deg)` to none and fades 0.2 → 1.
+- A committed turn collapses the panel, per the reducer rule.
+
+### 6.3 Zoom
+
+- `pinchProgress(anchor, distance)` returns `log2(distance / anchor)`: positive zooms in, negative zooms out. The anchor starts as the distance when the second pointer goes down. The direction locks once the progress passes ±0.1; after that, pinching back past the anchor holds at 0, as a drag does, so the target never flips. When progress reaches ±1, that level commits and the anchor resets to the current distance, so one pinch can travel several levels.
+- At a zoom limit, progress is damped to at most 0.15 and always cancels: a rubber band that shows there is no further level.
+- `zoomFrame`, with the origin at the ringed patch's center: zooming in, the current grid scales 1 → 2 and fades out while the target grid scales 0.5 → 1 and fades in. Zooming out mirrors it (1 → 0.5, and 2 → 1).
+
+### 6.4 Panel drop
+
+- Dragging down from the ceiling opens the panel; dragging up on the open panel's header (the swatch row) closes it. The slider track never starts a drag, so it keeps its own pointer handling.
+- `dropFrame`: `transform-origin: 50% 0`, from `perspective(900px) rotateX(-80deg)` at opacity 0 (progress 0) to none at opacity 1 (progress 1). Closing plays the same frames backward, so collapsing is now animated too.
+- A drag past the slop captures the pointer and swallows the click, as in [§5.1](#51-pointer-swipe), so the ceiling doesn't also toggle.
 
 ## 7. Styling
 
-- Panda tokens (neutral palette, type), recipes, dynamic colors
+- **Tokens** (`panda.config.ts`, `theme.extend`): semantic color tokens for the picker's UI in two **schemes**, light and dark, switched by a `data-scheme` attribute on the picker root through a custom Panda condition. Font tokens `body` and `mono`.
+
+| Token            | Light scheme | Dark scheme | Use                                                  |
+| ---------------- | ------------ | ----------- | ---------------------------------------------------- |
+| `picker.ground`  | #E7E7E4      | #1C1C1B     | Page background, before tinting                      |
+| `picker.surface` | #F5F5F3      | #262624     | Face card and panel, before tinting                  |
+| `picker.ink`     | #1A1A19      | #F2F2EF     | Text, rings, pattern                                 |
+| `picker.muted`   | #595955      | #A8A8A2     | Secondary text, at least 4.5:1 on the tinted surface |
+| `picker.line`    | #D6D6D2      | #3A3A37     | Borders                                              |
+
+- **Adaptive scheme** (**Proposed**): the face's colors range from near-white to near-black, so no single surface works. A pure `screenScheme(colors, previous)` in `src/hsl/theme.ts` takes the colors on screen (the grid cells) and returns the scheme: **dark** when their mean lightness (CIE L\*) is above 55, **light** when below 45, otherwise the previous scheme. The 10-point band stops it flickering as the user moves through mid tones. It is recomputed on commit, not during a tracked transition.
+- **Tint**: `screenScheme` also returns a tint, the saturation-weighted circular mean of the on-screen hues, with an amount up to 8% that grows with their mean saturation. `tintedSurface(scheme, tint, amount)` mixes it into the ground and surface, and the results are passed as `--ground` and `--surface` (see Runtime colors). Ink, muted and line come from the scheme tokens alone, so text contrast doesn't depend on the tint.
+- **Scheme changes** cross-fade `background-color` and `color` over 300 ms, instantly under reduced motion.
+- **Texture** (**Proposed**): a dot pattern on the surface (face card and panel, not the ground), pitched at the patch spacing of 52 px so the dots sit in the gaps between patches, like graph paper. Each dot is 1.5 px in the scheme's ink at 7% opacity, so it follows the scheme. It is one static `radial-gradient` background with `background-size: 52px 52px`, offset by the grid's origin. It is dropped under `prefers-contrast: more`.
+- **Ink on colors**: text on a patch, swatch or confirm button still picks dark or light ink with `contrastInk`; text on the surface uses the scheme's ink.
+- **Fonts** (**Proposed**): IBM Plex Sans and IBM Plex Mono via the `@fontsource/ibm-plex-sans` and `@fontsource/ibm-plex-mono` dependencies, imported in `src/index.tsx`. They are self-hosted, versioned and work offline, unlike a Google Fonts link.
+- **Runtime colors**: Panda extracts styles at build time, so per-patch and per-selection colors are passed as CSS custom properties on the element's `style` and consumed by static styles: `style={{ "--patch-color": toCss(c) }}` with `css({ bg: "var(--patch-color)" })`. The same applies to `--ceiling-gradient`, `--marker-top`, `--track-gradient`, `--selection-color`, `--ground`, `--surface`, `--face-width` and `--face-height`. No runtime value is ever interpolated into `css()`.
+- **Recipes**: colocated `sva` (PickerFace, DepthPanel) and `cva` (patch ring, peek strip orientation), not config recipes. They are single-use and read best next to their components.
 
 ## 8. Accessibility
 
-- Roles, labels, focus order, keyboard turning
+- Every control is a native `<button>` or `<input>`. Icon-only buttons (close, zoom, +) have `aria-label`s.
+- Patch grid: radiogroup with roving tabindex and `aria-checked` ([§4.4](#44-facegrid-and-patches)). The group's accessible description lists the keys from [§5.5](#55-keyboard).
+- Ceiling: `aria-expanded`. When the panel opens, focus moves to `DepthSlider`; when it closes, focus returns to the ceiling.
+- After a turn, a visually hidden `aria-live="polite"` region announces the new face ("_Slider: Hue. Grid: Lightness by Saturation._").
+- Focus order: close → ceiling → top strip → left strip → grid → right strip → bottom strip → zoom out → zoom in → confirm.
+- Text on colored surfaces uses `contrastInk`. Neutral text tokens meet 4.5:1 on their grounds.
+- Storybook's a11y addon (already installed) runs on every picker story.
 
 ## 9. State and persistence
 
+- Picker state is local to `HslPicker` and starts fresh each time it opens.
+- **Palette persistence** (**Proposed**, resolving the requirements' _Persistence_ question): `localStorage` under the key `colors-lab:palette:v1`. `storage.ts` separates pure `parsePalette(json: string | null): Hsl[]` (validates each entry, applies `roundHsl`, drops invalid ones, returns `[]` on bad input) and `serializePalette(p: Hsl[]): string` from thin `loadPalette()` / `savePalette()` wrappers. The wrappers catch storage errors (private mode, quota) and fall back to an in-memory palette.
+- With an empty or unreadable store, the page starts with no colors and the picker opens with the default initial color.
+
 ## 10. Testing strategy
 
-- Vitest unit tests for the pure core
-- Component tests (`@solidjs/testing-library`)
-- Storybook stories per component and face state
+**Unit tests (Vitest)** for every `src/hsl/` module and `palette/storage.ts`. Key cases:
+
+- `color`: rounding at 0.05 boundaries; `359.96 → 0`; hex for known colors; `contrastInk` against known WCAG pairs.
+- `cube`: the six-face loop; `turn` twice returns the original; every direction maps to the right axis.
+- `lattice`: at zoom 0 the S/L windows are exactly `[0, 25, 50, 75, 100]` (5 values) and the 7-value equivalent, whatever the selection; windows at the S/L ends shift but stay inside 0–100; hue wraps (selection 350° at 1×); `exact` vs. nearest after zooming out from a fine pick; no drift at zoom 4; a `selected` outside the window from `center` re-centers on `selected`.
+- `face`: ring placement (`exact`/`approx`), top row is the y maximum, peek strip definitions, ceiling stops max-first.
+- `state`: every action; turn collapses the panel; zoom clamps; `move` scrolls the window at its edges and stops at S/L 0 and 100; `pick` never moves the window; `turn` and `zoom` re-center it; stored values are always rounded.
+- `gestures`: slop and axis lock; dragging back holds at 0; a second pointer turns a gesture into a pinch for good, and `pointercancel` ends it; `pinchProgress` is log2, re-anchors at each level and locks its direction past ±0.1; `velocity` over the 100 ms window; wheel gestures (one action per burst, the 150 ms reset, Shift with `dx` only, Ctrl + wheel zooms).
+- `motion`: frames at progress 0 and 1 match the resting states; `settle` at 0.5 and for flings both ways; the zoom rubber band never commits.
+- `theme`: scheme thresholds and the hysteresis band; circular hue mean across 0/360; grays give no tint; ink and muted keep 4.5:1 on the tinted surface for every hue in 15° steps, in both schemes, at full tint.
+
+**Component tests** (`@solidjs/testing-library`, jsdom), driven by user-level events:
+
+- `FaceGrid`: one Tab stop; arrows move `aria-checked`; Shift + Arrow dispatches a turn.
+- `Ceiling` / `DepthPanel`: toggling `aria-expanded`, focus moving into the panel and back, `DepthSlider` reporting numbers.
+- `HslPicker`: confirm calls `onConfirm` with the rounded selection; cancel calls `onCancel`; double-click zooms. Controlled: a pick calls `onChange` but the ring moves only when `value` changes, and a new `value` from the parent moves it.
+- jsdom has no layout and no real pointer gestures, so drag and pinch recognition and the settle rule are covered by the pure `pointerGesture`, `pinchProgress` and `settle` tests, not by component tests.
+
+**Storybook** stories (with the a11y addon): `FaceGrid` on all six faces and at each zoom level; a selection at S = 0 and at S = 100; an approximate (dashed) ring; `Ceiling` collapsed and expanded; `PickerFace` composed; `HslPicker` interactive; `PalettePage` empty and populated.
 
 ## 11. Open questions carried from requirements
 
+| Question                  | Status in this spec                                                                                                                                                                                                              |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pinch-to-zoom             | In scope ([§5.4](#54-pinch-to-zoom)). A swipe is one pointer and a pinch two, so they don't conflict.                                                                                                                            |
+| Opposite swipe directions | Settled by the requirements: same swap; direction only affects the animation.                                                                                                                                                    |
+| Coarse hue at 1×          | Kept as specified (72° on x, about 51° on y). Revisit after hands-on testing.                                                                                                                                                    |
+| Keyboard turning          | **Proposed**: Shift + Arrow within the grid ([§5.5](#55-keyboard)).                                                                                                                                                              |
+| Persistence               | **Proposed**: `localStorage` with a versioned key ([§9](#9-state-and-persistence)).                                                                                                                                              |
+| Desktop layout            | **Proposed**: the phone layout centered at `max-width: 430px`; no wider grid.                                                                                                                                                    |
+| Fonts                     | **Proposed**: `@fontsource` packages ([§7](#7-styling)). Raised by this spec.                                                                                                                                                    |
+| Surface texture           | **Proposed**: a dot grid at the patch spacing ([§7](#7-styling)). Alternatives are film grain (an SVG noise filter) or fine ruled lines. Raised in review.                                                                       |
+| Window anchoring          | **Proposed**: a stored window center, so a pick never moves the grid ([§3.4](#34-grid-window-and-zoom)). Fixes double-click and keyboard edges, but changes how picking feels. Decide when building tasks 2–3. Raised in review. |
+
 ## 12. Task breakdown notes
 
-- Candidate milestones and dependencies, for `/tasks:tasks-setup`
+Candidate tasks for `/tasks:tasks-setup`, in dependency order. Each is shippable on its own, with tests and, for components, a story.
+
+1. **Color core**: `color.ts` and tests.
+2. **Cube, lattice and face data**: `cube.ts`, `lattice.ts`, `face.ts` and tests. Depends on 1.
+3. **Picker reducer**: `state.ts` and tests. Depends on 2.
+4. **Gesture classifiers**: `gestures.ts` and tests: `pointerGesture`, `pinchProgress`, `velocity()` and the wheel reducer. Depends on 3.
+5. **Theme, schemes and fonts**: `panda.config.ts` (two schemes, the scheme condition), surface pattern, font packages, `theme.ts` and tests. Depends on 1.
+6. **FaceGrid**: radiogroup, roving tabindex, keyboard, ring variants, stories. Depends on 2, 3, 5.
+7. **Ceiling, DepthPanel and DepthSlider**: stories, focus handling. Depends on 2, 3, 5.
+8. **PeekStrip and ZoomControl**. Depends on 2, 3, 5.
+9. **PickerFace and HslPicker composition**: confirm/cancel, live region. Depends on 6, 7, 8.
+10. **Transitions and animations**: `motion.ts`, `transition.ts`; triggered and tracked modes, settling, turn, zoom and panel frames, reduced motion. Depends on 9.
+11. **Gesture wiring**: `useGestures.ts` (tracked drag and pinch, panel drag, wheel, dblclick). Depends on 4, 9, 10.
+12. **Palette page and persistence**: `PalettePage.tsx`, `storage.ts`, replace `App.tsx`, remove `Slider.tsx` with its story and tests. Depends on 9.
+
+Task 1 comes first; 2 and 5 can then run in parallel, and once 3 and 5 land, tasks 4, 6, 7 and 8 can run in parallel too.
