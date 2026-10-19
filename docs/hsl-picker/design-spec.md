@@ -77,7 +77,7 @@ contrastInk(c: Hsl): "dark" | "light";  // WCAG relative luminance; higher contr
 ```
 
 - `roundHsl` is the single place values are rounded. The reducer stores only rounded colors, so stored, displayed and returned values always agree (requirements: _Callback value_).
-- `contrastInk` returns a token name, not a hex color, so components map it to theme tokens.
+- `contrastInk` returns a token name, not a hex color. Components map it to the scheme-independent `picker.inkOnColor.dark` and `picker.inkOnColor.light` tokens ([§7](#7-styling)), never to the scheme's `picker.ink`, and `contrastInk` compares against those exact colors.
 
 ### 3.2 Cube state
 
@@ -137,13 +137,13 @@ Grid dimensions are constants: `GRID_COLUMNS = 5` (x) and `GRID_ROWS = 7` (y).
 type Cell = { color: Hsl; row: number; col: number; ring: "none" | "exact" | "approx" };
 
 faceCells(face: Face, center: Hsl, selection: Hsl, zoom: ZoomLevel): Cell[]; // GRID_ROWS × GRID_COLUMNS, top row first
-peekStrips(face: Face, center: Hsl, selection: Hsl, zoom: ZoomLevel): { left: Hsl[]; right: Hsl[]; top: Hsl[]; bottom: Hsl[] };
+peekStrips(face: Face, selection: Hsl, zoom: ZoomLevel): { left: Hsl[]; right: Hsl[]; top: Hsl[]; bottom: Hsl[] };
 ceilingStops(face: Face, selection: Hsl, count?: number): Hsl[]; // full depth range, max first
 ```
 
 - **Cells**: x values from `axisWindow(face.x, GRID_COLUMNS, …)`; y values from `axisWindow(face.y, GRID_ROWS, …)`, reversed so the top row is the maximum. The cell at both axes' `nearest` gets a ring: `exact` only when both axes are exact, otherwise `approx`.
-- **Peek strips** follow the requirements' definition. Left/right: `axisWindow(face.depth, GRID_COLUMNS, …)` gives the depth window the new face would show on x; the strips use its first and last values, one cell per current y value. Top/bottom: `axisWindow(face.depth, GRID_ROWS, …)`, last and first values, one cell per current x value.
-- **Ceiling stops**: `count` (default 13) evenly spaced depth values from max to 0 (hue: 359 to 0), with the other two variables at the selection. The ceiling is never zoomed.
+- **Peek strips** follow the requirements' definition. They preview the face a turn would show, and a turn re-centers on the selection (§3.6), so every window they use is the re-centered one, `axisWindow` with the variable's selection value as both `center` and `selected`, never one from `center`; the strips always match the edge of the face that appears. Left/right: `axisWindow(face.depth, GRID_COLUMNS, …)` gives the depth window the new face would show on x; the strips use its first and last values, one cell per y value of the new face (`axisWindow(face.y, GRID_ROWS, …)`, unchanged by a horizontal turn). Top/bottom: `axisWindow(face.depth, GRID_ROWS, …)`, last and first values, one cell per x value of the new face (`axisWindow(face.x, GRID_COLUMNS, …)`). When `center` equals the selection, the strips' cells line up with the current grid's rows and columns.
+- **Ceiling stops**: `count` (default 13) evenly spaced depth values from max to 0 (hue: 359.9 to 0), with the other two variables at the selection. The ceiling is never zoomed.
 
 ### 3.6 Picker state
 
@@ -209,12 +209,13 @@ Styles come from one `sva` slot recipe colocated in the file (slots: `root`, `de
 
 - **`Ceiling`** is a `<button aria-expanded>` labelled "_Lightness 56%. Open slider_" (or "_Close slider_"). Inside, a span is tilted with CSS 3D: the wrapper sets `perspective: 300px; perspective-origin: 50% 100%`; the span sets `width: 72%; transform-origin: 50% 100%; transform: rotateX(-58deg)`. The gradient and the marker position are CSS variables ([§7](#7-styling)).
 - **`DepthPanel`** contains the depth name and value (as the slider's `<label>`), a Done button, the swatch (color, `toCss`, `toHex`, ink from `contrastInk`), and `DepthSlider`.
-- **`DepthSlider`** is a native `<input type="range">` with `writing-mode: vertical-lr; direction: rtl` (maximum at the top), `step=1`, `max` 100 (hue: 359), `aria-valuetext` set to the formatted value, and `onInput` dispatching `setDepth` with `Number(e.currentTarget.value)`. A native input gives keyboard and screen-reader behavior for free.
+- **`DepthSlider`** is a native `<input type="range">` with `writing-mode: vertical-lr; direction: rtl` (maximum at the top), `step=0.1` to match the stored precision, `max` 100 (hue: 359.9, so every valid hue is representable), `aria-valuetext` set to the formatted value, and `onInput` dispatching `setDepth` with `Number(e.currentTarget.value)`. A native input gives screen-reader behavior for free. Because 0.1 steps are too fine for the keyboard, a `keydown` handler makes the arrow keys step by 1 (10 with Shift) and Page Up/Down by 10.
 
 ### 4.4 `FaceGrid` and patches
 
 - One container with `role="radiogroup"` and an `aria-label` such as "_Hue by Saturation at Lightness 56%_". Each patch is a `<button role="radio" aria-checked>` labelled with `toCss(color)`. (**Proposed**: radiogroup over the ARIA grid pattern. It conveys single selection directly; the 2D arrow keys are documented in the group's description.)
-- **Roving tabindex**: only the ringed patch has `tabIndex=0`; the rest have `-1`. Tab enters and leaves the grid in one stop.
+- **Roving tabindex**: only the ringed patch has `tabIndex=0`; the rest have `-1`. Tab enters and leaves the grid in one stop. Arrow keys move DOM focus to the newly ringed patch (`.focus()` after the `move`), so screen readers announce the new selection.
+- **Approximate rings**: `aria-checked` is true only on an `exact` ring. With an `approx` ring no radio is checked; the ringed patch still holds `tabIndex=0`, and the group's description names the actual selection ("_Selected hsl(212.5 64% 56%), between patches_"), so assistive technology never reports a value Confirm won't return.
 - Rendered with `<Index>` over the 35 cells. The count never changes, only cell contents do, so `Index` updates in place without recreating buttons or losing focus.
 - Patch size is fixed at 48 px with a 4 px gap. The ring is a `cva` variant: `ring: none | exact | approx` (solid vs. dashed outline).
 
@@ -238,7 +239,7 @@ All handlers live in `useGestures.ts` (a function that takes the grid region, ce
 
 - Turn and pinch listeners sit on the grid region only (patches and peek strips), never on the ceiling, panel, zoom control or confirm button. The panel drag has its own listeners on the ceiling and the panel header ([§6.4](#64-panel-drop)). Both have `touch-action: none` so the browser doesn't pan or scroll.
 - A pure reducer, `pointerGesture(state, event)`, tracks the active pointers through `pointerdown`, `pointermove`, `pointerup` and `pointercancel`. It emits `start` once a one-pointer drag passes a 10 px slop and locks its dominant axis into a `TurnDirection` (drag left → `"right"`, so the face from the right comes in; drag up → `"down"`), then `progress` on each move, and `end` with the release velocity. A lift before the slop emits nothing, so it stays a click.
-- **Drag vs. click**: once a drag passes the slop, the grid region calls `setPointerCapture`, so `pointermove` and `pointerup` keep arriving after the pointer leaves the grid and the drag always settles. A one-shot capture-phase listener on the grid region swallows the `click` that follows, so the patch under the finger isn't picked; it is disarmed on the next `pointerdown` in case no click came. Capture starts only after the slop, so taps keep their normal click target.
+- **Drag vs. click**: once a drag passes the slop, the grid region calls `setPointerCapture`, so `pointermove` and `pointerup` keep arriving after the pointer leaves the grid and the drag always settles. A one-shot capture-phase listener on the grid region swallows the `click` that follows, so the patch under the finger isn't picked; it ignores clicks with `detail === 0` (keyboard-generated), and is disarmed on the next `pointerdown` or 300 ms after `pointerup`, whichever comes first, in case the browser sent no click. Capture starts only after the slop, so taps keep their normal click target.
 - `pointercancel` settles the tracked transition as a cancel.
 
 ### 5.2 Wheel and Shift + wheel
@@ -289,7 +290,7 @@ Turn, zoom and the panel drop are **transitions**: each moves the picker from it
 ### 6.1 Transition controller
 
 - `src/picker/transition.ts` holds one transition at a time: `{ action, target, mode, progress }`, where `target = pickerReducer(state, action)`. Because the reducer is pure, the target is known before anything moves.
-- The state changes on commit, not at the start. While a transition runs, `HslPicker` renders both states: the target face beside the current one for a turn, the target grid over the current one for a zoom, and the panel for a drop. `target` is a preview for rendering only. On commit the controller applies `pickerReducer(currentState, action)` to the state at that moment, so picks, moves and depth changes made during the transition survive; on cancel it drops the preview. Both read `view()` (§4.1), so controlled mode previews the parent's value.
+- The state changes on commit, not at the start. While a transition runs, `HslPicker` renders both states: the target face beside the current one for a turn, the target grid over the current one for a zoom, and the panel for a drop. `target` is a preview for rendering only: its elements are `inert` and `aria-hidden`, so they never take focus, clicks or screen-reader attention. On commit the controller applies `pickerReducer(currentState, action)` to the state at that moment, so picks, moves and depth changes made during the transition survive; on cancel it drops the preview. Both read `view()` (§4.1), so controlled mode previews the parent's value.
 - Frames are pure functions of progress in `src/hsl/motion.ts`: `turnFrame(direction, p)`, `zoomFrame(delta, p)` and `dropFrame(p)` return the transform and opacity of each animated element at progress `p`.
 - **Tracked**: each `pointermove` sets the progress, and the next animation frame writes `frame(p)` to the elements' styles. Progress maps linearly to the finger, with no easing.
 - **Triggered and settling**: one `element.animate([frame(from), frame(to)], { duration, easing: "cubic-bezier(.2, .7, .2, 1)" })` per element, from the current progress to 0 or 1. The duration is the base duration × the distance left, at least 120 ms, so a nearly finished drag settles quickly.
@@ -320,19 +321,21 @@ Turn, zoom and the panel drop are **transitions**: each moves the picker from it
 
 - **Tokens** (`panda.config.ts`, `theme.extend`): semantic color tokens for the picker's UI in two **schemes**, light and dark, switched by a `data-scheme` attribute on the picker root through a custom Panda condition. Font tokens `body` and `mono`.
 
-| Token            | Light scheme | Dark scheme | Use                                                  |
-| ---------------- | ------------ | ----------- | ---------------------------------------------------- |
-| `picker.ground`  | #E7E7E4      | #1C1C1B     | Page background, before tinting                      |
-| `picker.surface` | #F5F5F3      | #262624     | Face card and panel, before tinting                  |
-| `picker.ink`     | #1A1A19      | #F2F2EF     | Text, rings, pattern                                 |
-| `picker.muted`   | #595955      | #A8A8A2     | Secondary text, at least 4.5:1 on the tinted surface |
-| `picker.line`    | #D6D6D2      | #3A3A37     | Borders                                              |
+| Token                     | Light scheme | Dark scheme | Use                                                                                           |
+| ------------------------- | ------------ | ----------- | --------------------------------------------------------------------------------------------- |
+| `picker.ground`           | #E7E7E4      | #1C1C1B     | Page background, before tinting                                                               |
+| `picker.surface`          | #F5F5F3      | #262624     | Face card and panel, before tinting                                                           |
+| `picker.ink`              | #1A1A19      | #F2F2EF     | Text, rings, pattern                                                                          |
+| `picker.muted`            | #595955      | #A8A8A2     | Secondary text, at least 4.5:1 on the tinted surface                                          |
+| `picker.line`             | #D6D6D2      | #3A3A37     | Borders                                                                                       |
+| `picker.inkOnColor.dark`  | #1A1A19      | #1A1A19     | Text on patches, swatch and confirm button when `contrastInk` says dark; same in both schemes |
+| `picker.inkOnColor.light` | #FFFFFF      | #FFFFFF     | The same when `contrastInk` says light                                                        |
 
 - **Adaptive scheme** (**Proposed**): the face's colors range from near-white to near-black, so no single surface works. A pure `screenScheme(colors, previous)` in `src/hsl/theme.ts` takes the colors on screen (the grid cells) and returns the scheme: **dark** when their mean lightness (CIE L\*) is above 55, **light** when below 45, otherwise the previous scheme. The 10-point band stops it flickering as the user moves through mid tones. It is recomputed on commit, not during a tracked transition.
-- **Tint**: `screenScheme` also returns a tint, the saturation-weighted circular mean of the on-screen hues, with an amount up to 8% that grows with their mean saturation. `tintedSurface(scheme, tint, amount)` mixes it into the ground and surface, and the results are passed as `--ground` and `--surface` (see Runtime colors). Ink, muted and line come from the scheme tokens alone, so text contrast doesn't depend on the tint.
+- **Tint**: `screenScheme` also returns a tint, the saturation-weighted circular mean of the on-screen hues. Its amount, up to 8%, grows with their mean saturation scaled by the mean's resultant length, so evenly spread hues (as on the starting 1× Hue axis) give no tint; below a resultant of 0.1 the tint is none. `tintedSurface(scheme, tint, amount)` mixes it into the ground and surface, and the results are passed as `--ground` and `--surface` (see Runtime colors). Ink, muted and line come from the scheme tokens alone, so text contrast doesn't depend on the tint.
 - **Scheme changes** cross-fade `background-color` and `color` over 300 ms, instantly under reduced motion.
 - **Texture** (**Proposed**): a dot pattern on the surface (face card and panel, not the ground), pitched at the patch spacing of 52 px so the dots sit in the gaps between patches, like graph paper. Each dot is 1.5 px in the scheme's ink at 7% opacity, so it follows the scheme. It is one static `radial-gradient` background with `background-size: 52px 52px`, offset by the grid's origin. It is dropped under `prefers-contrast: more`.
-- **Ink on colors**: text on a patch, swatch or confirm button still picks dark or light ink with `contrastInk`; text on the surface uses the scheme's ink.
+- **Ink on colors**: text on a patch, swatch or confirm button picks `picker.inkOnColor.dark` or `.light` with `contrastInk`; text on the surface uses the scheme's ink.
 - **Fonts** (**Proposed**): IBM Plex Sans and IBM Plex Mono via the `@fontsource/ibm-plex-sans` and `@fontsource/ibm-plex-mono` dependencies, imported in `src/index.tsx`. They are self-hosted, versioned and work offline, unlike a Google Fonts link.
 - **Runtime colors**: Panda extracts styles at build time, so per-patch and per-selection colors are passed as CSS custom properties on the element's `style` and consumed by static styles: `style={{ "--patch-color": toCss(c) }}` with `css({ bg: "var(--patch-color)" })`. The same applies to `--ceiling-gradient`, `--marker-top`, `--track-gradient`, `--selection-color`, `--ground`, `--surface`, `--face-width` and `--face-height`. No runtime value is ever interpolated into `css()`.
 - **Recipes**: colocated `sva` (PickerFace, DepthPanel) and `cva` (patch ring, peek strip orientation), not config recipes. They are single-use and read best next to their components.
@@ -340,7 +343,7 @@ Turn, zoom and the panel drop are **transitions**: each moves the picker from it
 ## 8. Accessibility
 
 - Every control is a native `<button>` or `<input>`. Icon-only buttons (close, zoom, +) have `aria-label`s.
-- Patch grid: radiogroup with roving tabindex and `aria-checked` ([§4.4](#44-facegrid-and-patches)). The group's accessible description lists the keys from [§5.5](#55-keyboard).
+- Patch grid: radiogroup with roving tabindex and `aria-checked` ([§4.4](#44-facegrid-and-patches)). The group's accessible description lists the keys from [§5.5](#55-keyboard) and, with an approximate ring, names the actual selection ([§4.4](#44-facegrid-and-patches)).
 - Ceiling: `aria-expanded`. When the panel opens, focus moves to `DepthSlider`; when it closes, focus returns to the ceiling.
 - After a turn, a visually hidden `aria-live="polite"` region announces the new face ("_Slider: Hue. Grid: Lightness by Saturation._").
 - Focus order: close → ceiling → top strip → left strip → grid → right strip → bottom strip → zoom out → zoom in → confirm.
@@ -364,11 +367,11 @@ Turn, zoom and the panel drop are **transitions**: each moves the picker from it
 - `state`: every action; turn collapses the panel; zoom clamps; `move` scrolls the window at its edges and stops at S/L 0 and 100; `pick` never moves the window; `turn` and `zoom` re-center it; stored values are always rounded.
 - `gestures`: slop and axis lock; dragging back holds at 0; a second pointer turns a gesture into a pinch for good, and `pointercancel` ends it; `pinchProgress` is log2, re-anchors at each level and locks its direction past ±0.1; `velocity` over the 100 ms window; wheel gestures (one action per burst, the 150 ms reset, Shift with `dx` only, Ctrl + wheel zooms).
 - `motion`: frames at progress 0 and 1 match the resting states; `settle` at 0.5 and for flings both ways; the zoom rubber band never commits.
-- `theme`: scheme thresholds and the hysteresis band; circular hue mean across 0/360; grays give no tint; ink and muted keep 4.5:1 on the tinted surface for every hue in 15° steps, in both schemes, at full tint.
+- `theme`: scheme thresholds and the hysteresis band; circular hue mean across 0/360; grays and evenly spread hues give no tint; ink and muted keep 4.5:1 on the tinted surface for every hue in 15° steps, in both schemes, at full tint.
 
 **Component tests** (`@solidjs/testing-library`, jsdom), driven by user-level events:
 
-- `FaceGrid`: one Tab stop; arrows move `aria-checked`; Shift + Arrow dispatches a turn.
+- `FaceGrid`: one Tab stop; arrows move `aria-checked` and `document.activeElement`; an `approx` ring leaves no radio checked; Shift + Arrow dispatches a turn.
 - `Ceiling` / `DepthPanel`: toggling `aria-expanded`, focus moving into the panel and back, `DepthSlider` reporting numbers.
 - `HslPicker`: confirm calls `onConfirm` with the rounded selection; cancel calls `onCancel`; double-click zooms. Controlled: a pick calls `onChange` but the ring moves only when `value` changes, and a new `value` from the parent moves it.
 - jsdom has no layout and no real pointer gestures, so drag and pinch recognition and the settle rule are covered by the pure `pointerGesture`, `pinchProgress` and `settle` tests, not by component tests.
