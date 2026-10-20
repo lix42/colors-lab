@@ -22,7 +22,7 @@ Non-goals (for this iteration):
 
 Three layers, each depending only on the layers before it:
 
-1. **Pure core** (`src/hsl/`): plain TypeScript, no Solid or DOM imports. Color math, the cube model, the zoom lattice, the picker state reducer, and gesture classification. Everything here is a pure function with unit tests, in line with the repo's preference for pure functions over classes.
+1. **Pure core** (`src/color/` and `src/hsl/`): plain TypeScript, no Solid or DOM imports. Color math (`src/color/`, shared by future color spaces), the cube model, the zoom lattice, the picker state reducer, and gesture classification. Everything here is a pure function with unit tests, in line with the repo's preference for pure functions over classes.
 2. **Components** (`src/picker/`): Solid components that render the state and translate DOM events into reducer actions. They hold no logic beyond wiring.
 3. **Demo host** (`src/palette/`): the palette page that opens the picker and stores the results.
 
@@ -30,8 +30,10 @@ Three layers, each depending only on the layers before it:
 
 ```
 src/
+  color/
+    hsl.ts           Hsl type, normalize/round, toCss, toHex, relativeLuminance, INK_ON_COLOR, contrastInk
+    hsl.test.ts
   hsl/
-    color.ts         Hsl type, normalize/round, toCss, toHex, contrastInk
     cube.ts          Variable, Face, START_FACE, turn(), variable metadata
     lattice.ts       axisWindow(): patch values for one axis at a zoom level
     face.ts          faceCells(), peekStrips(), ceilingStops()
@@ -73,11 +75,13 @@ normalizeHue(h: number): number;        // ((h % 360) + 360) % 360
 roundHsl(c: Hsl): Hsl;                  // each to 0.1, then normalizeHue (359.96 → 0)
 toCss(c: Hsl): string;                  // "hsl(210 64% 56%)"
 toHex(c: Hsl): string;                  // "#4A8FD6", uppercase
+relativeLuminance(c: Hsl): number;      // WCAG, sRGB linearized; also used by theme.ts for CIE L*
+const INK_ON_COLOR = { dark: "#1A1A19", light: "#FFFFFF" } as const;
 contrastInk(c: Hsl): "dark" | "light";  // WCAG relative luminance; higher contrast ratio wins
 ```
 
 - `roundHsl` is the single place values are rounded. The reducer stores only rounded colors, so stored, displayed and returned values always agree (requirements: _Callback value_).
-- `contrastInk` returns a token name, not a hex color. Components map it to the scheme-independent `picker.inkOnColor.dark` and `picker.inkOnColor.light` tokens ([§7](#7-styling)), never to the scheme's `picker.ink`, and `contrastInk` compares against those exact colors.
+- `contrastInk` returns a token name, not a hex color. Components map it to the scheme-independent `picker.inkOnColor.dark` and `picker.inkOnColor.light` tokens ([§7](#7-styling)), never to the scheme's `picker.ink`, and `contrastInk` compares against those exact colors. `INK_ON_COLOR` is the single source for them: `panda.config.ts` builds the two tokens from it rather than repeating the hex values.
 
 ### 3.2 Cube state
 
@@ -335,7 +339,7 @@ Turn, zoom and the panel drop are **transitions**: each moves the picker from it
 - **Tint**: `screenScheme` also returns a tint, the saturation-weighted circular mean of the on-screen hues. Its amount, up to 8%, grows with their mean saturation scaled by the mean's resultant length, so evenly spread hues (as on the starting 1× Hue axis) give no tint; below a resultant of 0.1 the tint is none. `tintedSurface(scheme, tint, amount)` mixes it into the ground and surface, and the results are passed as `--ground` and `--surface` (see Runtime colors). Ink, muted and line come from the scheme tokens alone, so text contrast doesn't depend on the tint.
 - **Scheme changes** cross-fade `background-color` and `color` over 300 ms, instantly under reduced motion.
 - **Texture** (**Proposed**): a dot pattern on the surface (face card and panel, not the ground), pitched at the patch spacing of 52 px so the dots sit in the gaps between patches, like graph paper. Each dot is 1.5 px in the scheme's ink at 7% opacity, so it follows the scheme. It is one static `radial-gradient` background with `background-size: 52px 52px`, offset by the grid's origin. It is dropped under `prefers-contrast: more`.
-- **Ink on colors**: text on a patch, swatch or confirm button picks `picker.inkOnColor.dark` or `.light` with `contrastInk`; text on the surface uses the scheme's ink.
+- **Ink on colors**: text on a patch, swatch or confirm button picks `picker.inkOnColor.dark` or `.light` with `contrastInk`; text on the surface uses the scheme's ink. The two `picker.inkOnColor` tokens are built from `INK_ON_COLOR` ([§3.1](#31-color-types-and-conversions)).
 - **Fonts** (**Proposed**): IBM Plex Sans and IBM Plex Mono via the `@fontsource/ibm-plex-sans` and `@fontsource/ibm-plex-mono` dependencies, imported in `src/index.tsx`. They are self-hosted, versioned and work offline, unlike a Google Fonts link.
 - **Runtime colors**: Panda extracts styles at build time, so per-patch and per-selection colors are passed as CSS custom properties on the element's `style` and consumed by static styles: `style={{ "--patch-color": toCss(c) }}` with `css({ bg: "var(--patch-color)" })`. The same applies to `--ceiling-gradient`, `--marker-top`, `--track-gradient`, `--selection-color`, `--ground`, `--surface`, `--face-width` and `--face-height`. No runtime value is ever interpolated into `css()`.
 - **Recipes**: colocated `sva` (PickerFace, DepthPanel) and `cva` (patch ring, peek strip orientation), not config recipes. They are single-use and read best next to their components.
@@ -358,9 +362,9 @@ Turn, zoom and the panel drop are **transitions**: each moves the picker from it
 
 ## 10. Testing strategy
 
-**Unit tests (Vitest)** for every `src/hsl/` module and `palette/storage.ts`. Key cases:
+**Unit tests (Vitest)** for every `src/color/` and `src/hsl/` module and `palette/storage.ts`. Key cases:
 
-- `color`: rounding at 0.05 boundaries; `359.96 → 0`; hex for known colors; `contrastInk` against known WCAG pairs.
+- `color`: rounding at 0.05 boundaries; `359.96 → 0`; hex for known colors; `relativeLuminance` of black, white and mid gray; `contrastInk` against known WCAG pairs.
 - `cube`: the six-face loop; `turn` twice returns the original; every direction maps to the right axis.
 - `lattice`: at zoom 0 the S/L windows are exactly `[0, 25, 50, 75, 100]` (5 values) and the 7-value equivalent, whatever the selection; windows at the S/L ends shift but stay inside 0–100; hue wraps (selection 350° at 1×); `exact` vs. nearest after zooming out from a fine pick; no drift at zoom 4; a `selected` outside the window from `center` re-centers on `selected`.
 - `face`: ring placement (`exact`/`approx`), top row is the y maximum, peek strip definitions, ceiling stops max-first.
@@ -396,7 +400,7 @@ Turn, zoom and the panel drop are **transitions**: each moves the picker from it
 
 Candidate tasks for `/tasks:tasks-setup`, in dependency order. Each is shippable on its own, with tests and, for components, a story.
 
-1. **Color core**: `color.ts` and tests.
+1. **Color core**: `src/color/hsl.ts` and tests.
 2. **Cube, lattice and face data**: `cube.ts`, `lattice.ts`, `face.ts` and tests. Depends on 1.
 3. **Picker reducer**: `state.ts` and tests. Depends on 2.
 4. **Gesture classifiers**: `gestures.ts` and tests: `pointerGesture`, `pinchProgress`, `velocity()` and the wheel reducer. Depends on 3.
