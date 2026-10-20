@@ -11,9 +11,10 @@ _Nothing yet._
 ## model
 
 **Status:** not started
-**Updated:** 2026-10-19
+**Updated:** 2026-10-20
 
 - 2026-10-19: filed. Goal: cube.ts, lattice.ts, face.ts: faces, turns, axisWindow, faceCells, peekStrips, ceilingStops
+- 2026-10-20: plan revised: patch colors are computed in CSS (spec §3.5, §7.1). face.ts adds faceLayout (nine affine FaceParams + ring), patchColor, faceVars and patchBackground; peekStrips returns FaceParams; faceCells stays as the test reference and screenScheme input.
 
 ## reducer
 

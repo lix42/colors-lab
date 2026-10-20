@@ -2,7 +2,7 @@
 title: FaceGrid
 status: todo
 deps: [cube/model, cube/reducer, picker/theme]
-summary: "5 x 7 patch radiogroup: roving focus, keyboard, ring variants, stories"
+summary: "5 x 7 patch radiogroup: colors computed in CSS, roving focus, keyboard, ring variants, ring-only labels, stories"
 ---
 
 # FaceGrid

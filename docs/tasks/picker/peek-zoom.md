@@ -2,7 +2,7 @@
 title: PeekStrip and ZoomControl
 status: todo
 deps: [cube/model, cube/reducer, picker/theme]
-summary: edge peek-strip buttons and the zoom -/level/+ control
+summary: edge peek-strip buttons (colors computed in CSS) and the zoom -/level/+ control
 ---
 
 # PeekStrip and ZoomControl
