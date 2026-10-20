@@ -24,7 +24,8 @@ Spec [§3.2–3.5](../../hsl-picker/design-spec.md#32-cube-state), [§7.1](../..
   per variable and zoom (S/L clamp inside 0–100, hue wraps); values computed as
   `k · step`, never accumulated; returns `step` and `first` (`k₀ · step`, before
   `normalizeHue`) alongside `values`, `nearest` and `exact`. When `selected` falls outside the window from
-  `center`, the window centers on `selected`. `exact` uses a 0.05 tolerance.
+  `center`, the window centers on `selected`. `exact` compares the rounded
+  lattice value with `selected` (a raw 0.05 tolerance misfires on 18.75 → 18.8).
 - `face.ts`:
   - `faceLayout` returns `FaceParams`, an `Affine` `{ base, perCol, perRow }` per
     variable (x grows with the column, y shrinks with the row so the top row is
@@ -54,7 +55,9 @@ before `cube/reducer` builds on it.
 `vp test` passes with tests per module: the six-face loop and `turn` twice is
 identity; S/L windows at zoom 0 are exactly `[0, 25, 50, 75, 100]` (and the 7-value
 one); windows at the ends stay in 0–100; hue wraps at 350° 1×; no drift at zoom 4;
-`exact` vs nearest after zooming out from a fine pick; out-of-window `selected`
+`exact` vs nearest after zooming out from a fine pick; an exact pick of S 18.75
+at zoom 2 (stored 18.8) is `exact`; `normalizeHue(first + i · step)` matches
+`values[i]` after rounding; out-of-window `selected`
 re-centers; ring placement; peek strips match the turned face's edges.
 `patchColor(faceLayout(…).params, col, row)` equals the reference grid at every cell
 for all six faces, every zoom level, selections at S/L 0 and 100 and hue windows

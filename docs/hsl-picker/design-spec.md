@@ -119,7 +119,7 @@ type ZoomLevel = 0 | 1 | 2 | 3 | 4; // shown as 2^z: 1×, 2×, 4×, 8×, 16×
 type AxisWindow = {
   values: number[]; // n patch values, ascending (hue: ascending modulo 360)
   nearest: number;  // index of the value nearest the selection
-  exact: boolean;   // selection equals values[nearest] within 0.05
+  exact: boolean;   // selection equals values[nearest] rounded to 0.1
   step: number;     // lattice step at this zoom
   first: number;    // k₀ · step, values[0] before normalizeHue (hue: may be negative)
 };
@@ -132,8 +132,8 @@ The lattice is fixed per variable, axis length and zoom level (requirements: _Ea
 - **S and L.** `steps = (n − 1) · 2^z`, `step = 100 / steps`; the lattice is `k · step` for integer `k` in `[0, steps]`. With `c = round(center / step)`, the window starts at `clamp(c − ⌊n/2⌋, 0, steps − (n − 1))` and holds `n` consecutive lattice values. It always fits, so there are no empty cells.
 - **H.** `steps = n · 2^z`, `step = 360 / steps`. With `c = round(center / step) mod steps`, the window is `k = c − ⌊n/2⌋ … c + ⌈n/2⌉ − 1`, each value `normalizeHue(k · step)`. Hue never shifts; it wraps.
 - **Window center** (**Proposed**; see [§11](#11-open-questions-carried-from-requirements)). The window is centered on `state.center` (§3.6), not on the selection, so picking a patch never moves the grid under the pointer. The center resets to the selection on turn and zoom. `axisWindow` itself owns the other case: when `selected` lies outside the window computed from `center` (for example a parent's new `value` in controlled mode), it centers on `selected` instead, so `nearest` and `exact` always describe a selection inside the window.
-- **Exact vs. nearest.** `exact` uses a 0.05 tolerance (half the stored precision), because a picked lattice value is stored rounded to 0.1 (16.67 becomes 16.7).
-- Values are computed as `k · step`, never by accumulating `step`, so there is no drift: `values[i]` is `(k₀ + i) · step`, normalized for hue. `step` and `first` are returned so `faceLayout` (§3.5) builds on the same lattice instead of re-deriving it; a step taken from `values[1] − values[0]` would be wrong across the hue wrap.
+- **Exact vs. nearest.** A picked lattice value is stored rounded to 0.1 (16.67 becomes 16.7), so `exact` rounds `values[nearest]` the way `roundHsl` rounds that channel and compares it with `selected` for equality. A raw `|selected − value| ≤ 0.05` tolerance is not used: it misfires on lattice values ending in 5 in the hundredths, since 18.75 is stored as 18.8, which is `0.05000000000000071` away in floating point, so an exact pick would show a dashed ring.
+- Values are computed as `k · step`, never by accumulating `step`, so there is no drift: `values[i]` is `(k₀ + i) · step`, normalized for hue. `step` and `first` are returned so `faceLayout` (§3.5) builds on the same lattice instead of re-deriving it (`first + i · step` matches `values[i]` to within float noise, not bit for bit); a step taken from `values[1] − values[0]` would be wrong across the hue wrap.
 
 Grid dimensions are constants: `GRID_COLUMNS = 5` (x) and `GRID_ROWS = 7` (y).
 
@@ -361,7 +361,7 @@ Turn, zoom and the panel drop are **transitions**: each moves the picker from it
 
 ### 7.1 Patch colors in CSS
 
-The requirements make this project a playground for front-end techniques; this is one of them. Instead of JS writing 35 colors on every change, the grid container holds the face's nine numbers and CSS math functions turn them into each patch's color. A depth drag, the picker's most frequent update, writes one custom property (the depth variable's base) on one element and touches no patch.
+The requirements make this project a playground for front-end techniques; this is one of them. Instead of JS writing 35 colors on every change, the grid container holds the face's nine numbers and CSS math functions turn them into each patch's color. A depth drag, the picker's most frequent update, writes one custom property (the depth variable's base) on the grid container, and the only patch it touches is the ringed one, whose label follows the value.
 
 - **Container**: `faceVars(params)` (in `face.ts`) returns the nine custom properties, `--h-base`, `--h-col`, `--h-row`, and the same for `s` and `l`, as plain numbers. The grid container sets them on its `style`. Solid diffs `style` objects per key, so only values that changed are written: one on a depth step, four on a zoom, at most four on a window scroll, and up to all nine on a turn.
 - **Patch**: `patchBackground(col, row)` (in `face.ts`) returns the patch's formula with its column and row written in as literals, never as custom properties:
@@ -382,7 +382,7 @@ The requirements make this project a playground for front-end techniques; this i
   - During a turn or zoom, the preview face is its own grid with its own nine properties, so both faces render at once with no extra work.
 - **Precision**: CSS paints the unrounded value, which differs from the rounded `patchColor` by less than 0.05 in any channel, far below a visible difference.
 - **Failure mode**: if any of the nine properties is missing, the whole `background` is invalid and the patch turns transparent. `faceVars` always returns all nine, and its test checks that.
-- **Cost**: when a container property changes, the browser still restyles and repaints all 35 patches; that was true before too. What goes away is the per-patch reactive work: no per-patch color strings, effects or DOM writes. `screenScheme` still evaluates the 35 colors in JS through `faceColors`, as plain math with no DOM; its mean CIE L\* is non-linear in the channels, so it can't be read off the nine numbers.
+- **Cost**: when a container property changes, the browser still restyles and repaints all 35 patches; that was true before too. What goes away is the per-patch reactive work: no per-patch color strings or color writes, and no effect on any patch but the ringed one's label. `screenScheme` still evaluates the 35 colors in JS through `faceColors`, as plain math with no DOM; its mean CIE L\* is non-linear in the channels, so it can't be read off the nine numbers.
 
 ## 8. Accessibility
 
@@ -406,7 +406,7 @@ The requirements make this project a playground for front-end techniques; this i
 
 - `color`: rounding at 0.05 boundaries; `359.96 → 0`; hex for known colors; `relativeLuminance` of black, white and mid gray; `contrastInk` against known WCAG pairs.
 - `cube`: the six-face loop; `turn` twice returns the original; every direction maps to the right axis.
-- `lattice`: at zoom 0 the S/L windows are exactly `[0, 25, 50, 75, 100]` (5 values) and the 7-value equivalent, whatever the selection; windows at the S/L ends shift but stay inside 0–100; hue wraps (selection 350° at 1×); `exact` vs. nearest after zooming out from a fine pick; no drift at zoom 4; a `selected` outside the window from `center` re-centers on `selected`; `normalizeHue(first + i · step)` reproduces `values[i]`, including across the hue wrap.
+- `lattice`: at zoom 0 the S/L windows are exactly `[0, 25, 50, 75, 100]` (5 values) and the 7-value equivalent, whatever the selection; windows at the S/L ends shift but stay inside 0–100; hue wraps (selection 350° at 1×); `exact` vs. nearest after zooming out from a fine pick; no drift at zoom 4; a `selected` outside the window from `center` re-centers on `selected`; `normalizeHue(first + i · step)` matches `values[i]` after rounding the way `roundHsl` rounds the channel (not with exact equality: the sums differ in the last bits), including across the hue wrap; an exact pick of a value ending in 5 in the hundredths (S 18.75 at zoom 2) is `exact`.
 - `face`: ring placement (`exact`/`approx`), top row is the y maximum, peek strip definitions, ceiling stops max-first. `patchColor(faceLayout(…).params, col, row)` equals the test file's reference grid (built from `axisWindow` directly) at every cell, for all six faces, every zoom level, selections at S/L 0 and 100 and hue windows across 0/360; the same for each peek strip against its `axisWindow` definition. `faceVars` returns all nine properties; `patchBackground(2, 3)` matches a snapshot.
 - `state`: every action; turn collapses the panel; zoom clamps; `move` scrolls the window at its edges and stops at S/L 0 and 100; `pick` never moves the window; `turn` and `zoom` re-center it; stored values are always rounded.
 - `gestures`: slop and axis lock; dragging back holds at 0; a second pointer turns a gesture into a pinch for good, and `pointercancel` ends it; `pinchProgress` is log2, re-anchors at each level and locks its direction past ±0.1; `velocity` over the 100 ms window; wheel gestures (one action per burst, the 150 ms reset, Shift with `dx` only, Ctrl + wheel zooms).

@@ -15,6 +15,7 @@ _Nothing yet._
 
 - 2026-10-19: filed. Goal: Panda light/dark schemes, surface texture, fonts, theme.ts (screenScheme, tintedSurface)
 - 2026-10-20: plan revised: screenScheme's colors come from faceCells, since patches are painted by CSS (spec §7.1).
+- 2026-10-20: plan revised after review: screenScheme is fed by faceColors(params) (patchColor at all 35 positions), not faceCells, which no longer exists (spec §3.5).
 
 ## face-grid
 
@@ -47,6 +48,7 @@ _Nothing yet._
 
 - 2026-10-19: filed. Goal: public HslPicker: controlled/uncontrolled, confirm/cancel, live region
 - 2026-10-20: plan revised: memos are faceLayout / peekStrips / ceilingStops; screenScheme is fed by faceCells on commit (spec §7.1).
+- 2026-10-20: plan revised after review: screenScheme is a memo over the displayed state fed by faceColors(params), not faceCells on commit; it follows picks, moves, depth steps and committed turns/zooms, never a transition's preview (spec §7).
 
 ## transitions
 
