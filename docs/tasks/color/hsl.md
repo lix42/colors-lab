@@ -1,8 +1,9 @@
 ---
 title: HSL color core
-status: todo
+status: done
 deps: []
 summary: Hsl type, normalize/round, toCss, toHex, contrastInk in src/color/
+done: 2026-10-19
 ---
 
 # HSL color core

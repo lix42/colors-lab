@@ -71,10 +71,10 @@ src/
 ```ts
 type Hsl = { h: number; s: number; l: number }; // h in [0, 360), s and l in [0, 100]
 
-normalizeHue(h: number): number;        // ((h % 360) + 360) % 360
-roundHsl(c: Hsl): Hsl;                  // each to 0.1, then normalizeHue (359.96 → 0)
+normalizeHue(h: number): number;        // into [0, 360); exact for in-range hues
+roundHsl(c: Hsl): Hsl;                  // clamp s, l to [0, 100]; each to 0.1, half up in decimal (2.55 → 2.6); hue normalized before and after (359.96 → 0)
 toCss(c: Hsl): string;                  // "hsl(210 64% 56%)"
-toHex(c: Hsl): string;                  // "#4A8FD6", uppercase
+toHex(c: Hsl): string;                  // "#478FD7", uppercase
 relativeLuminance(c: Hsl): number;      // WCAG, sRGB linearized; also used by theme.ts for CIE L*
 const INK_ON_COLOR = { dark: "#1A1A19", light: "#FFFFFF" } as const;
 contrastInk(c: Hsl): "dark" | "light";  // WCAG relative luminance; higher contrast ratio wins

@@ -58,14 +58,14 @@ graph TD
 **Color spaces**
 > Color types and conversions independent of any picker: HSL now, later OKLCH, LAB and gamut mapping.
 
-- [ ] [HSL color core](tasks/color/hsl.md) — Hsl type, normalize/round, toCss, toHex, contrastInk in src/color/
+- [x] [HSL color core](tasks/color/hsl.md) — Hsl type, normalize/round, toCss, toHex, contrastInk in src/color/
 
 ### cube — [progress](progress/cube.md)
 **HSL cube model**
 > The pure HSL cube: faces and turns, the zoom lattice, face data, the picker reducer, and gesture classifiers. No Solid or DOM.
 
 - [ ] [Gesture classifiers](tasks/cube/gestures.md) — pointerGesture, pinchProgress, velocity, wheel reducer in gestures.ts · **waits on** `cube/reducer`
-- [ ] [Cube, lattice and face data](tasks/cube/model.md) — cube.ts, lattice.ts, face.ts: faces, turns, axisWindow, faceCells, peekStrips, ceilingStops · **waits on** `color/hsl`
+- [ ] [Cube, lattice and face data](tasks/cube/model.md) — cube.ts, lattice.ts, face.ts: faces, turns, axisWindow, faceCells, peekStrips, ceilingStops
 - [ ] [Picker reducer](tasks/cube/reducer.md) — PickerState, PickerAction, pickerReducer in state.ts · **waits on** `cube/model`
 
 ### picker — [progress](progress/picker.md)
@@ -77,7 +77,7 @@ graph TD
 - [ ] [FaceGrid](tasks/picker/face-grid.md) — 5 x 7 patch radiogroup: roving focus, keyboard, ring variants, stories · **waits on** `cube/model`, `cube/reducer`, `picker/theme`
 - [ ] [Gesture wiring](tasks/picker/gesture-wiring.md) — useGestures.ts: tracked drag and pinch, panel drag, wheel, dblclick · **waits on** `cube/gestures`, `picker/compose`, `picker/transitions`
 - [ ] [PeekStrip and ZoomControl](tasks/picker/peek-zoom.md) — edge peek-strip buttons and the zoom -/level/+ control · **waits on** `cube/model`, `cube/reducer`, `picker/theme`
-- [ ] [Theme, schemes and fonts](tasks/picker/theme.md) — Panda light/dark schemes, surface texture, fonts, theme.ts (screenScheme, tintedSurface) · **waits on** `color/hsl`
+- [ ] [Theme, schemes and fonts](tasks/picker/theme.md) — Panda light/dark schemes, surface texture, fonts, theme.ts (screenScheme, tintedSurface)
 - [ ] [Transitions and animations](tasks/picker/transitions.md) — motion.ts + transition.ts: triggered/tracked turn, zoom, panel drop; settling; reduced motion · **waits on** `picker/compose`
 
 ### palette — [progress](progress/palette.md)
