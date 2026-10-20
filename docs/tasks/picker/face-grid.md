@@ -14,25 +14,44 @@ keyboard.
 
 ## Design
 
-Spec [§4.4](../../hsl-picker/design-spec.md#44-facegrid-and-patches), [§5.5](../../hsl-picker/design-spec.md#55-keyboard), [§8](../../hsl-picker/design-spec.md#8-accessibility).
+Spec [§4.4](../../hsl-picker/design-spec.md#44-facegrid-and-patches), [§5.5](../../hsl-picker/design-spec.md#55-keyboard), [§7.1](../../hsl-picker/design-spec.md#71-patch-colors-in-css), [§8](../../hsl-picker/design-spec.md#8-accessibility).
 File `src/picker/FaceGrid.tsx`.
 
+- Props: `params: FaceParams`, `ring: Ring`, the group's label and description,
+  and `dispatch`. The grid never receives a list of colors.
 - `role="radiogroup"` with an aria-label ("Hue by Saturation at Lightness 56%")
-  and a description listing the keys; each patch a `<button role="radio">`
-  labelled `toCss(color)`, `aria-checked` only on an `exact` ring.
+  and a description listing the keys; each patch a `<button role="radio">`,
+  `aria-checked` only on an `exact` ring.
+- **Colors in CSS, no per-patch updates**: the container sets `faceVars(params)`
+  on its `style`; each patch sets `style={{ background: patchBackground(col, row) }}`,
+  which reads no signal, so Solid writes it once at creation. Inline `style`, not
+  `css()`: Panda can't extract strings built in a loop.
+- **Labels** (Deviation, spec §4.4): the ringed patch is labelled
+  `toCss(patchColor(params, col, row))`; every other patch keeps a fixed
+  positional label ("Column 2, row 3").
+- One `createSelector` over the ringed index drives the ring variant,
+  `aria-checked`, `tabIndex` and the label, so a ring move re-runs only the two
+  patches it leaves and enters.
+- A click dispatches `pick` with `patchColor(params(), col, row)`, computing only
+  that patch's color.
 - Roving tabindex on the ringed patch; arrows dispatch `move` then `.focus()` the
   new ringed patch; Shift + Arrow `turn`; `+`/`-` `zoom`.
 - After a turn or zoom moves the ring, focus follows it: if focus was in the grid,
   `.focus()` the new ringed patch. `<Index>` keeps the old button, so without
   this focus stays on a patch that is no longer selected.
-- `<Index>` over the 35 cells so buttons are never recreated. 48 px patches, 4 px
-  gap; `cva` ring variant `none | exact | approx` (solid vs dashed); patch color
-  via `--patch-color`.
+- `<Index>` over the 35 positions so buttons are never recreated; each button's
+  `col` and `row` are fixed by its index. 48 px patches, 4 px gap; `cva` ring
+  variant `none | exact | approx` (solid vs dashed).
 
 ## How to Verify
 
 `vp test`: one Tab stop; arrows move `aria-checked` and `document.activeElement`;
 an approx ring checks no radio and the description names the selection; Shift +
 Arrow dispatches a turn, and afterwards `document.activeElement` is the new ringed
-patch. Stories: all six faces, each zoom level, S = 0 and
-S = 100, an approx ring; a11y addon clean.
+patch; clicking a patch picks `patchColor` of its position; only the ringed patch
+has an `hsl()` label. A `MutationObserver` on the patches sees no attribute change
+on a depth change, and changes on only the old and new ringed patch on a ring move.
+Stories: all six faces, each zoom level, S = 0 and S = 100, an approx ring; a play
+function compares a few patches' computed `background-color` against
+`toHex(patchColor(…))`, within one 8-bit step per channel (jsdom can't evaluate
+`var()`/`calc()`); a11y addon clean.

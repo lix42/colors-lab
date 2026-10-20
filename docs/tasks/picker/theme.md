@@ -22,7 +22,9 @@ Spec [§7](../../hsl-picker/design-spec.md#7-styling).
   `INK_ON_COLOR` in `src/color/hsl.ts` (not repeated as literals); a custom
   condition switching on `data-scheme` on the picker root; `body`/`mono` font
   tokens. Run `vp exec panda codegen` after.
-- `src/hsl/theme.ts`: `screenScheme(colors, previous)` — mean CIE L* (from
+- `src/hsl/theme.ts`: `screenScheme(colors, previous)` — the grid's colors come
+  from `faceCells` (patches are painted by CSS, so there is no color list in the
+  DOM); mean CIE L* (from
   `relativeLuminance` in `src/color/hsl.ts`) above 55 →
   dark, below 45 → light, else previous; plus a tint from the saturation-weighted
   circular hue mean, scaled by resultant length (none below 0.1, max 8%).
