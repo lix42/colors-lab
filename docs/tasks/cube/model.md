@@ -2,7 +2,7 @@
 title: Cube, lattice and face data
 status: todo
 deps: [color/hsl]
-summary: "cube.ts, lattice.ts, face.ts: faces, turns, axisWindow, faceLayout, patchColor, faceCells, peekStrips, ceilingStops, CSS formula strings"
+summary: "cube.ts, lattice.ts, face.ts: faces, turns, axisWindow, faceLayout, patchColor, faceColors, peekStrips, ceilingStops, CSS formula strings"
 ---
 
 # Cube, lattice and face data
@@ -22,18 +22,21 @@ Spec [§3.2–3.5](../../hsl-picker/design-spec.md#32-cube-state), [§7.1](../..
   `axisOf(direction)`.
 - `lattice.ts`: `axisWindow(variable, n, zoom, center, selected)` on a fixed lattice
   per variable and zoom (S/L clamp inside 0–100, hue wraps); values computed as
-  `k · step`, never accumulated. When `selected` falls outside the window from
+  `k · step`, never accumulated; returns `step` and `first` (`k₀ · step`, before
+  `normalizeHue`) alongside `values`, `nearest` and `exact`. When `selected` falls outside the window from
   `center`, the window centers on `selected`. `exact` uses a 0.05 tolerance.
 - `face.ts`:
   - `faceLayout` returns `FaceParams`, an `Affine` `{ base, perCol, perRow }` per
     variable (x grows with the column, y shrinks with the row so the top row is
     the y max, depth is constant), plus the `Ring` (`col`, `row`,
-    `exact`/`approx`). Hue `base` is left un-normalized; it can be negative.
+    `exact`/`approx`). Built from `axisWindow`'s `first` and `step`; the y base is
+    `first + (GRID_ROWS − 1) · step`. Bases are never normalized: a hue base on x
+    can be negative, one on y can reach 360 or more.
   - `patchColor(params, col, row)`: one patch's color, `roundHsl` of the three
     affine values.
-  - `faceCells`: all 35 colors straight from `axisWindow`, independent of
-    `faceLayout`. Not for rendering: `screenScheme` reads it, and tests use it
-    as the reference for `patchColor`.
+  - `faceColors(params)`: `patchColor` at all 35 positions, top row first;
+    `screenScheme`'s input, not used for rendering. The independent reference
+    grid (built from `axisWindow` directly) lives in `face.test.ts`.
   - `peekStrips`: one `FaceParams` per strip (left/right indexed by row,
     top/bottom by column), always from the re-centered windows, matching the
     face a turn shows.
@@ -53,7 +56,7 @@ identity; S/L windows at zoom 0 are exactly `[0, 25, 50, 75, 100]` (and the 7-va
 one); windows at the ends stay in 0–100; hue wraps at 350° 1×; no drift at zoom 4;
 `exact` vs nearest after zooming out from a fine pick; out-of-window `selected`
 re-centers; ring placement; peek strips match the turned face's edges.
-`patchColor(faceLayout(…).params, col, row)` equals `faceCells(…)` at every cell
+`patchColor(faceLayout(…).params, col, row)` equals the reference grid at every cell
 for all six faces, every zoom level, selections at S/L 0 and 100 and hue windows
 across 0/360; each strip's `FaceParams` matches its `axisWindow` definition the
 same way. `faceVars` returns all nine properties; `patchBackground(2, 3)` matches

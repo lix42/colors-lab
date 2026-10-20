@@ -23,6 +23,7 @@ _Nothing yet._
 
 - 2026-10-19: filed. Goal: 5 x 7 patch radiogroup: roving focus, keyboard, ring variants, stories
 - 2026-10-20: plan revised: the grid gets FaceParams, not colors; the container carries faceVars, each patch's patchBackground is written once (spec §7.1). Only the ringed patch has an hsl() label, others are positional (Deviation, spec §4.4); one createSelector drives ring, aria-checked, tabIndex and label.
+- 2026-10-20: plan revised after review: the ringed patch's label follows depth steps (a MutationObserver sees only that aria-label on a depth change); positional labels count from 1; the click reads props.params.
 
 ## depth-panel
 

@@ -28,11 +28,12 @@ File `src/picker/FaceGrid.tsx`.
   `css()`: Panda can't extract strings built in a loop.
 - **Labels** (Deviation, spec §4.4): the ringed patch is labelled
   `toCss(patchColor(params, col, row))`; every other patch keeps a fixed
-  positional label ("Column 2, row 3").
+  positional label counted from 1 (`Column ${col + 1}, row ${row + 1}`).
 - One `createSelector` over the ringed index drives the ring variant,
-  `aria-checked`, `tabIndex` and the label, so a ring move re-runs only the two
-  patches it leaves and enters.
-- A click dispatches `pick` with `patchColor(params(), col, row)`, computing only
+  `aria-checked`, `tabIndex` and which label a patch shows, so a ring move re-runs
+  only the two patches it leaves and enters. The ringed patch's label also reads
+  `params`, so it follows a depth step; nothing else on a patch is reactive.
+- A click dispatches `pick` with `patchColor(props.params, col, row)`, computing only
   that patch's color.
 - Roving tabindex on the ringed patch; arrows dispatch `move` then `.focus()` the
   new ringed patch; Shift + Arrow `turn`; `+`/`-` `zoom`.
@@ -49,8 +50,8 @@ File `src/picker/FaceGrid.tsx`.
 an approx ring checks no radio and the description names the selection; Shift +
 Arrow dispatches a turn, and afterwards `document.activeElement` is the new ringed
 patch; clicking a patch picks `patchColor` of its position; only the ringed patch
-has an `hsl()` label. A `MutationObserver` on the patches sees no attribute change
-on a depth change, and changes on only the old and new ringed patch on a ring move.
+has an `hsl()` label. A `MutationObserver` on the patches sees only the ringed
+patch's `aria-label` change on a depth change, and changes on only the old and new ringed patch on a ring move.
 Stories: all six faces, each zoom level, S = 0 and S = 100, an approx ring; a play
 function compares a few patches' computed `background-color` against
 `toHex(patchColor(…))`, within one 8-bit step per channel (jsdom can't evaluate
