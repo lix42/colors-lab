@@ -36,7 +36,7 @@ src/
   hsl/
     cube.ts          Variable, Face, START_FACE, turn(), variable metadata
     lattice.ts       axisWindow(): patch values for one axis at a zoom level
-    face.ts          faceCells(), peekStrips(), ceilingStops()
+    face.ts          faceLayout(), patchColor(), faceColors(), peekStrips(), ceilingStops(), CSS formula strings
     state.ts         PickerState, PickerAction, pickerReducer()
     gestures.ts      pointerGesture(), pinchProgress(), velocity(), wheel gesture reducer
     motion.ts        turnFrame(), zoomFrame(), dropFrame(), settle()
@@ -119,7 +119,9 @@ type ZoomLevel = 0 | 1 | 2 | 3 | 4; // shown as 2^z: 1×, 2×, 4×, 8×, 16×
 type AxisWindow = {
   values: number[]; // n patch values, ascending (hue: ascending modulo 360)
   nearest: number;  // index of the value nearest the selection
-  exact: boolean;   // selection equals values[nearest] within 0.05
+  exact: boolean;   // selection equals values[nearest] rounded to 0.1
+  step: number;     // lattice step at this zoom
+  first: number;    // k₀ · step, values[0] before normalizeHue (hue: may be negative)
 };
 
 axisWindow(variable: Variable, n: number, zoom: ZoomLevel, center: number, selected: number): AxisWindow;
@@ -130,24 +132,32 @@ The lattice is fixed per variable, axis length and zoom level (requirements: _Ea
 - **S and L.** `steps = (n − 1) · 2^z`, `step = 100 / steps`; the lattice is `k · step` for integer `k` in `[0, steps]`. With `c = round(center / step)`, the window starts at `clamp(c − ⌊n/2⌋, 0, steps − (n − 1))` and holds `n` consecutive lattice values. It always fits, so there are no empty cells.
 - **H.** `steps = n · 2^z`, `step = 360 / steps`. With `c = round(center / step) mod steps`, the window is `k = c − ⌊n/2⌋ … c + ⌈n/2⌉ − 1`, each value `normalizeHue(k · step)`. Hue never shifts; it wraps.
 - **Window center** (**Proposed**; see [§11](#11-open-questions-carried-from-requirements)). The window is centered on `state.center` (§3.6), not on the selection, so picking a patch never moves the grid under the pointer. The center resets to the selection on turn and zoom. `axisWindow` itself owns the other case: when `selected` lies outside the window computed from `center` (for example a parent's new `value` in controlled mode), it centers on `selected` instead, so `nearest` and `exact` always describe a selection inside the window.
-- **Exact vs. nearest.** `exact` uses a 0.05 tolerance (half the stored precision), because a picked lattice value is stored rounded to 0.1 (16.67 becomes 16.7).
-- Values are computed as `k · step`, never by accumulating `step`, so there is no drift.
+- **Exact vs. nearest.** A picked lattice value is stored rounded to 0.1 (16.67 becomes 16.7), so `exact` rounds `values[nearest]` the way `roundHsl` rounds that channel and compares it with `selected` for equality. A raw `|selected − value| ≤ 0.05` tolerance is not used: it misfires on lattice values ending in 5 in the hundredths, since 18.75 is stored as 18.8, which is `0.05000000000000071` away in floating point, so an exact pick would show a dashed ring.
+- Values are computed as `k · step`, never by accumulating `step`, so there is no drift: `values[i]` is `(k₀ + i) · step`, normalized for hue. `step` and `first` are returned so `faceLayout` (§3.5) builds on the same lattice instead of re-deriving it (`first + i · step` matches `values[i]` to within float noise, not bit for bit); a step taken from `values[1] − values[0]` would be wrong across the hue wrap.
 
 Grid dimensions are constants: `GRID_COLUMNS = 5` (x) and `GRID_ROWS = 7` (y).
 
-### 3.5 Peek strips and ceiling gradient
+### 3.5 Face layout, peek strips and ceiling gradient
+
+On a face, each of H, S and L is a linear function of a patch's column and row: the x variable grows with the column, the y variable shrinks with the row (the top row is the maximum), and the depth variable is constant. The face is therefore described by nine numbers, three per variable, rather than by 35 colors. The components hand those nine numbers to CSS, which computes every patch's color ([§7.1](#71-patch-colors-in-css)); JS computes a single patch's color only when it needs one.
 
 ```ts
-type Cell = { color: Hsl; row: number; col: number; ring: "none" | "exact" | "approx" };
+type Affine = { base: number; perCol: number; perRow: number }; // value = base + col · perCol + row · perRow
+type FaceParams = Record<Variable, Affine>;
+type Ring = { col: number; row: number; kind: "exact" | "approx" };
 
-faceCells(face: Face, center: Hsl, selection: Hsl, zoom: ZoomLevel): Cell[]; // GRID_ROWS × GRID_COLUMNS, top row first
-peekStrips(face: Face, selection: Hsl, zoom: ZoomLevel): { left: Hsl[]; right: Hsl[]; top: Hsl[]; bottom: Hsl[] };
+faceLayout(face: Face, center: Hsl, selection: Hsl, zoom: ZoomLevel): { params: FaceParams; ring: Ring };
+patchColor(params: FaceParams, col: number, row: number): Hsl; // roundHsl of the three affine values
+faceColors(params: FaceParams): Hsl[]; // patchColor at all GRID_ROWS × GRID_COLUMNS positions, top row first
+peekStrips(face: Face, selection: Hsl, zoom: ZoomLevel): Record<"left" | "right" | "top" | "bottom", FaceParams>;
 ceilingStops(face: Face, selection: Hsl, count?: number): Hsl[]; // full depth range, max first
 ```
 
-- **Cells**: x values from `axisWindow(face.x, GRID_COLUMNS, …)`; y values from `axisWindow(face.y, GRID_ROWS, …)`, reversed so the top row is the maximum. The cell at both axes' `nearest` gets a ring: `exact` only when both axes are exact, otherwise `approx`.
-- **Peek strips** follow the requirements' definition. They preview the face a turn would show, and a turn re-centers on the selection (§3.6), so every window they use is the re-centered one, `axisWindow` with the variable's selection value as both `center` and `selected`, never one from `center`; the strips always match the edge of the face that appears. Left/right: `axisWindow(face.depth, GRID_COLUMNS, …)` gives the depth window the new face would show on x; the strips use its first and last values, one cell per y value of the new face (`axisWindow(face.y, GRID_ROWS, …)`, unchanged by a horizontal turn). Top/bottom: `axisWindow(face.depth, GRID_ROWS, …)`, last and first values, one cell per x value of the new face (`axisWindow(face.x, GRID_COLUMNS, …)`). When `center` equals the selection, the strips' cells line up with the current grid's rows and columns.
-- **Ceiling stops**: `count` (default 13) evenly spaced depth values from max to 0 (hue: 359.9 to 0), with the other two variables at the selection. The ceiling is never zoomed.
+- **Face layout**: x from `wx = axisWindow(face.x, GRID_COLUMNS, …)`, y from `wy = axisWindow(face.y, GRID_ROWS, …)`. Then `params[face.x] = { base: wx.first, perCol: wx.step, perRow: 0 }`, `params[face.y] = { base: wy.first + (GRID_ROWS − 1) · wy.step, perCol: 0, perRow: −wy.step }` (row 0 is the window's maximum) and `params[face.depth] = { base: selection[face.depth], perCol: 0, perRow: 0 }`. Bases are never normalized: a hue base on x can be negative, and one on y can be 360 or more. CSS and `roundHsl` both wrap them. The ring sits at column `wx.nearest` and row `GRID_ROWS − 1 − wy.nearest`: `exact` only when both axes are exact, otherwise `approx`.
+- **`patchColor`** is how components get a patch's color: on pick, for the ringed patch's label, and for `faceColors`. The reducer doesn't use it: `move` works on `PickerState` through `axisWindow`, the lattice itself, including the window scroll at an edge (§3.6). `base + col · perCol + row · perRow` is a multiply-add, not the lattice's `k · step`, so it can differ from it in the last bits; `roundHsl`'s 12-digit rounding absorbs that, and a test pins it ([§10](#10-testing-strategy)).
+- **`faceColors`** lists all 35 colors as `screenScheme`'s input ([§7](#7-styling)). It is not used for rendering. Production has one window-to-color mapping, `faceLayout` + `patchColor`; the independent reference, all 35 colors built from `axisWindow` directly, lives in `face.test.ts`.
+- **Peek strips** follow the requirements' definition. They preview the face a turn would show, and a turn re-centers on the selection (§3.6), so every window they use is the re-centered one, `axisWindow` with the variable's selection value as both `center` and `selected`, never one from `center`; the strips always match the edge of the face that appears. Left/right: `axisWindow(face.depth, GRID_COLUMNS, …)` gives the depth window the new face would show on x; the strips use its first and last values, one cell per y value of the new face (`axisWindow(face.y, GRID_ROWS, …)`, unchanged by a horizontal turn). Top/bottom: `axisWindow(face.depth, GRID_ROWS, …)`, last and first values, one cell per x value of the new face (`axisWindow(face.x, GRID_COLUMNS, …)`). When `center` equals the selection, the strips' cells line up with the current grid's rows and columns. Each strip is returned as `FaceParams` in the same form as the grid: left/right cells are indexed by row (every `perCol` is 0), top/bottom cells by column (every `perRow` is 0), and the strip's depth value and the third variable go in `base`.
+- **Ceiling stops**: `count` (default 13) evenly spaced depth values from max to 0 (hue: 359.9 to 0), with the other two variables at the selection. The ceiling is never zoomed. It is one gradient string, so it stays a JS-built CSS variable.
 
 ### 3.6 Picker state
 
@@ -199,7 +209,7 @@ type HslPickerProps = {
 - Owns `const [state, setState] = createSignal(initialPickerState(props.value ?? props.initialColor))`. The displayed selection is `selection = () => (props.value !== undefined ? roundHsl(props.value) : state().selection)`.
 - `view = () => ({ ...state(), selection: selection() })` is the state as displayed. `dispatch(a)` runs `pickerReducer(view(), a)`, stores the result, and calls `onChange` when the selection changed. In controlled mode the stored selection is ignored, so a pick shows only once the parent passes it back as `value`, and the parent can reject or adjust it.
 - Only the selection is controllable. The face, zoom and panel stay internal in both modes. The mode is fixed at mount by whether `value` is defined, as in React; switching later isn't supported.
-- Derived data (`faceCells`, `peekStrips`, `ceilingStops`) are `createMemo`s over `view()`, so in controlled mode they follow the parent's `value`.
+- Derived data (`faceLayout`, `peekStrips`, `ceilingStops`) are `createMemo`s over `view()`, so in controlled mode they follow the parent's `value`. None of them is a list of colors: the grid and strips get `FaceParams`, and the per-patch colors are computed by CSS ([§7.1](#71-patch-colors-in-css)).
 - Renders the header (close button, title), the current `PickerFace` (plus the target's during a turn, [§6.1](#61-transition-controller)), and the confirm button. The confirm button's background is the selection ([§7](#7-styling)) and its label is `toCss(selection)`.
 - Owns the transition controller ([§6.1](#61-transition-controller)): `turn`, `zoom` and `toggleExpanded` go through it instead of straight to `dispatch`.
 
@@ -217,15 +227,20 @@ Styles come from one `sva` slot recipe colocated in the file (slots: `root`, `de
 
 ### 4.4 `FaceGrid` and patches
 
-- One container with `role="radiogroup"` and an `aria-label` such as "_Hue by Saturation at Lightness 56%_". Each patch is a `<button role="radio" aria-checked>` labelled with `toCss(color)`. (**Proposed**: radiogroup over the ARIA grid pattern. It conveys single selection directly; the 2D arrow keys are documented in the group's description.)
+Props: `params: FaceParams`, `ring: Ring`, the group's label and description, and `dispatch`. The grid never receives a list of colors.
+
+- One container with `role="radiogroup"` and an `aria-label` such as "_Hue by Saturation at Lightness 56%_". Each patch is a `<button role="radio" aria-checked>`. (**Proposed**: radiogroup over the ARIA grid pattern. It conveys single selection directly; the 2D arrow keys are documented in the group's description.)
+- **No per-patch updates.** The 35 buttons are created once and their color is never written again. The container carries the nine `FaceParams` as custom properties; each patch's `background` is a CSS formula with its own column and row written in as literals ([§7.1](#71-patch-colors-in-css)). A depth drag, zoom, turn or window scroll changes the container's properties and, at most, the ringed patch's label. Whether a patch is ringed is one `createSelector` over the ringed index, which drives the ring variant, `aria-checked`, `tabIndex` and which label a patch shows, so a ring move re-runs only the two patches it leaves and enters. The ringed patch's label also reads `params`, so it follows a depth step; no other patch reads anything reactive.
+- **Patch labels** (**Deviation**: the requirements label every patch with its `hsl()` value): the ringed patch is labelled `toCss(patchColor(params, col, row))`, the lattice value a pick there returns; every other patch keeps a fixed positional label, counted from 1 like the radiogroup's position (`Column ${col + 1}, row ${row + 1}`, so the top-left patch is "_Column 1, row 1_"). With the roving tabindex, keyboard focus only ever lands on the ringed patch, so a user moving through the grid always hears a real value; reading other patches in a screen reader's browse mode gives their position, and the radiogroup adds "_3 of 35_" itself. A label for every patch would have to change on every depth step, which is exactly the per-patch update this design avoids; this way one label changes. A label that CSS computes (a hidden element with generated content, referenced by `aria-labelledby`) does not work: Chromium leaves `counter()` values out of the accessible name.
 - **Roving tabindex**: only the ringed patch has `tabIndex=0`; the rest have `-1`. Tab enters and leaves the grid in one stop. Arrow keys move DOM focus to the newly ringed patch (`.focus()` after the `move`), so screen readers announce the new selection.
 - **Approximate rings**: `aria-checked` is true only on an `exact` ring. With an `approx` ring no radio is checked; the ringed patch still holds `tabIndex=0`, and the group's description names the actual selection ("_Selected hsl(212.5 64% 56%), between patches_"), so assistive technology never reports a value Confirm won't return.
-- Rendered with `<Index>` over the 35 cells. The count never changes, only cell contents do, so `Index` updates in place without recreating buttons or losing focus.
+- **Picking**: a patch's click handler dispatches `pick` with `patchColor(props.params, col, row)`, read at click time, computing only its own color, and only when clicked.
+- Rendered with `<Index>` over the 35 positions. The count never changes, so `Index` creates each button once and keeps it, with its focus, for the life of the grid. Each button's `col` and `row` are fixed by its index.
 - Patch size is fixed at 48 px with a 4 px gap. The ring is a `cva` variant: `ring: none | exact | approx` (solid vs. dashed outline).
 
 ### 4.5 `PeekStrip`
 
-A `<button>` with an `aria-label` naming the turn ("_Turn sideways: put Hue on the slider_"). It renders the strip's colors as flex children and dispatches `turn` with its direction. The strip is 14 px thick; a `::after` pseudo-element extends the hit area by 10 px on each side.
+A `<button>` with an `aria-label` naming the turn ("_Turn sideways: put Hue on the slider_"). It receives the strip's `FaceParams` and renders its 5 or 7 cells as flex children, colored by the same CSS formula as the patches ([§7.1](#71-patch-colors-in-css)), and dispatches `turn` with its direction. The strip is 14 px thick; a `::after` pseudo-element extends the hit area by 10 px on each side.
 
 ### 4.6 Zoom control
 
@@ -335,19 +350,44 @@ Turn, zoom and the panel drop are **transitions**: each moves the picker from it
 | `picker.inkOnColor.dark`  | #1A1A19      | #1A1A19     | Text on patches, swatch and confirm button when `contrastInk` says dark; same in both schemes |
 | `picker.inkOnColor.light` | #FFFFFF      | #FFFFFF     | The same when `contrastInk` says light                                                        |
 
-- **Adaptive scheme** (**Proposed**): the face's colors range from near-white to near-black, so no single surface works. A pure `screenScheme(colors, previous)` in `src/hsl/theme.ts` takes the colors on screen (the grid cells) and returns the scheme: **dark** when their mean lightness (CIE L\*) is above 55, **light** when below 45, otherwise the previous scheme. The 10-point band stops it flickering as the user moves through mid tones. It is recomputed on commit, not during a tracked transition.
+- **Adaptive scheme** (**Proposed**): the face's colors range from near-white to near-black, so no single surface works. A pure `screenScheme(colors, previous)` in `src/hsl/theme.ts` takes the colors on screen (the grid's, from `faceColors`) and returns the scheme: **dark** when their mean lightness (CIE L\*) is above 55, **light** when below 45, otherwise the previous scheme. The 10-point band stops it flickering as the user moves through mid tones. It is a memo over the displayed state, so it follows every pick, move and depth step, and each committed turn or zoom; it never reads a transition's preview, so it doesn't change mid-transition.
 - **Tint**: `screenScheme` also returns a tint, the saturation-weighted circular mean of the on-screen hues. Its amount, up to 8%, grows with their mean saturation scaled by the mean's resultant length, so evenly spread hues (as on the starting 1× Hue axis) give no tint; below a resultant of 0.1 the tint is none. `tintedSurface(scheme, tint, amount)` mixes it into the ground and surface, and the results are passed as `--ground` and `--surface` (see Runtime colors). Ink, muted and line come from the scheme tokens alone, so text contrast doesn't depend on the tint.
 - **Scheme changes** cross-fade `background-color` and `color` over 300 ms, instantly under reduced motion.
 - **Texture** (**Proposed**): a dot pattern on the surface (face card and panel, not the ground), pitched at the patch spacing of 52 px so the dots sit in the gaps between patches, like graph paper. Each dot is 1.5 px in the scheme's ink at 7% opacity, so it follows the scheme. It is one static `radial-gradient` background with `background-size: 52px 52px`, offset by the grid's origin. It is dropped under `prefers-contrast: more`.
 - **Ink on colors**: text on a patch, swatch or confirm button picks `picker.inkOnColor.dark` or `.light` with `contrastInk`; text on the surface uses the scheme's ink. The two `picker.inkOnColor` tokens are built from `INK_ON_COLOR` ([§3.1](#31-color-types-and-conversions)).
 - **Fonts** (**Proposed**): IBM Plex Sans and IBM Plex Mono via the `@fontsource/ibm-plex-sans` and `@fontsource/ibm-plex-mono` dependencies, imported in `src/index.tsx`. They are self-hosted, versioned and work offline, unlike a Google Fonts link.
-- **Runtime colors**: Panda extracts styles at build time, so per-patch and per-selection colors are passed as CSS custom properties on the element's `style` and consumed by static styles: `style={{ "--patch-color": toCss(c) }}` with `css({ bg: "var(--patch-color)" })`. The same applies to `--ceiling-gradient`, `--marker-top`, `--track-gradient`, `--selection-color`, `--ground`, `--surface`, `--face-width` and `--face-height`. No runtime value is ever interpolated into `css()`.
+- **Runtime colors**: Panda extracts styles at build time, so per-selection values are passed as CSS custom properties on the element's `style` and consumed by static styles: `style={{ "--selection-color": toCss(c) }}` with `css({ bg: "var(--selection-color)" })`. The same applies to `--ceiling-gradient`, `--marker-top`, `--track-gradient`, `--ground`, `--surface`, `--face-width` and `--face-height`. No runtime value is ever interpolated into `css()`. Patch and peek-strip colors are the exception: CSS computes them ([§7.1](#71-patch-colors-in-css)).
 - **Recipes**: colocated `sva` (PickerFace, DepthPanel) and `cva` (patch ring, peek strip orientation), not config recipes. They are single-use and read best next to their components.
+
+### 7.1 Patch colors in CSS
+
+The requirements make this project a playground for front-end techniques; this is one of them. Instead of JS writing 35 colors on every change, the grid container holds the face's nine numbers and CSS math functions turn them into each patch's color. A depth drag, the picker's most frequent update, writes one custom property (the depth variable's base) on the grid container, and the only patch it touches is the ringed one, whose label follows the value.
+
+- **Container**: `faceVars(params)` (in `face.ts`) returns the nine custom properties, `--h-base`, `--h-col`, `--h-row`, and the same for `s` and `l`, as plain numbers. The grid container sets them on its `style`. Solid diffs `style` objects per key, so only values that changed are written: one on a depth step, four on a zoom, at most four on a window scroll, and up to all nine on a turn.
+- **Patch**: `patchBackground(col, row)` (in `face.ts`) returns the patch's formula with its column and row written in as literals, never as custom properties:
+
+  ```css
+  hsl(calc(var(--h-base) + 2 * var(--h-col) + 3 * var(--h-row))
+      calc((var(--s-base) + 2 * var(--s-col) + 3 * var(--s-row)) * 1%)
+      calc((var(--l-base) + 2 * var(--l-col) + 3 * var(--l-row)) * 1%))
+  ```
+
+  The patch sets it as `style={{ background: patchBackground(col, row) }}`. The string reads no signal, so Solid writes it once, when the button is created, and never again. It goes in `style`, not `css()`: Panda extracts only literal styles at build time, and 35 strings built in a loop aren't.
+
+- **Peek strips** use the same two functions, with the strip's `FaceParams` on the strip and each cell's index in the column or row slot (§3.5).
+- **Why it works**:
+  - Hue needs no `mod`: CSS normalizes any hue angle, so a negative `--h-base` or a sum past 360 paints the wrapped hue.
+  - S and L are multiplied by `1%` for the `hsl()` percentage arguments.
+  - The variables are inherited, unregistered custom properties, so no `@property` is needed. The formula sits on the patch and only its inputs on the container. That split matters: a custom property's `var()` references are resolved on the element that declares it, so a `--h: calc(…)` declared on the container would be computed there and inherited as a finished number.
+  - During a turn or zoom, the preview face is its own grid with its own nine properties, so both faces render at once with no extra work.
+- **Precision**: CSS paints the unrounded value, which differs from the rounded `patchColor` by less than 0.05 in any channel, far below a visible difference.
+- **Failure mode**: if any of the nine properties is missing, the whole `background` is invalid and the patch turns transparent. `faceVars` always returns all nine, and its test checks that.
+- **Cost**: when a container property changes, the browser still restyles and repaints all 35 patches; that was true before too. What goes away is the per-patch reactive work: no per-patch color strings or color writes, and no effect on any patch but the ringed one's label. `screenScheme` still evaluates the 35 colors in JS through `faceColors`, as plain math with no DOM; its mean CIE L\* is non-linear in the channels, so it can't be read off the nine numbers.
 
 ## 8. Accessibility
 
 - Every control is a native `<button>` or `<input>`. Icon-only buttons (close, zoom, +) have `aria-label`s.
-- Patch grid: radiogroup with roving tabindex and `aria-checked` ([§4.4](#44-facegrid-and-patches)). The group's accessible description lists the keys from [§5.5](#55-keyboard) and, with an approximate ring, names the actual selection ([§4.4](#44-facegrid-and-patches)).
+- Patch grid: radiogroup with roving tabindex and `aria-checked` ([§4.4](#44-facegrid-and-patches)). The group's accessible description lists the keys from [§5.5](#55-keyboard) and, with an approximate ring, names the actual selection ([§4.4](#44-facegrid-and-patches)). Only the ringed patch is labelled with its `hsl()` value; the others have positional labels (**Deviation**, [§4.4](#44-facegrid-and-patches)).
 - Ceiling: `aria-expanded`. When the panel opens, focus moves to `DepthSlider`; when it closes, focus returns to the ceiling.
 - After a turn, a visually hidden `aria-live="polite"` region announces the new face ("_Slider: Hue. Grid: Lightness by Saturation._").
 - Focus order: close → ceiling → top strip → left strip → grid → right strip → bottom strip → zoom out → zoom in → confirm.
@@ -366,8 +406,8 @@ Turn, zoom and the panel drop are **transitions**: each moves the picker from it
 
 - `color`: rounding at 0.05 boundaries; `359.96 → 0`; hex for known colors; `relativeLuminance` of black, white and mid gray; `contrastInk` against known WCAG pairs.
 - `cube`: the six-face loop; `turn` twice returns the original; every direction maps to the right axis.
-- `lattice`: at zoom 0 the S/L windows are exactly `[0, 25, 50, 75, 100]` (5 values) and the 7-value equivalent, whatever the selection; windows at the S/L ends shift but stay inside 0–100; hue wraps (selection 350° at 1×); `exact` vs. nearest after zooming out from a fine pick; no drift at zoom 4; a `selected` outside the window from `center` re-centers on `selected`.
-- `face`: ring placement (`exact`/`approx`), top row is the y maximum, peek strip definitions, ceiling stops max-first.
+- `lattice`: at zoom 0 the S/L windows are exactly `[0, 25, 50, 75, 100]` (5 values) and the 7-value equivalent, whatever the selection; windows at the S/L ends shift but stay inside 0–100; hue wraps (selection 350° at 1×); `exact` vs. nearest after zooming out from a fine pick; no drift at zoom 4; a `selected` outside the window from `center` re-centers on `selected`; `normalizeHue(first + i · step)` matches `values[i]` after rounding the way `roundHsl` rounds the channel (not with exact equality: the sums differ in the last bits), including across the hue wrap; an exact pick of a value ending in 5 in the hundredths (S 18.75 at zoom 2) is `exact`.
+- `face`: ring placement (`exact`/`approx`), top row is the y maximum, peek strip definitions, ceiling stops max-first. `patchColor(faceLayout(…).params, col, row)` equals the test file's reference grid (built from `axisWindow` directly) at every cell, for all six faces, every zoom level, selections at S/L 0 and 100 and hue windows across 0/360; the same for each peek strip against its `axisWindow` definition. `faceVars` returns all nine properties; `patchBackground(2, 3)` matches a snapshot.
 - `state`: every action; turn collapses the panel; zoom clamps; `move` scrolls the window at its edges and stops at S/L 0 and 100; `pick` never moves the window; `turn` and `zoom` re-center it; stored values are always rounded.
 - `gestures`: slop and axis lock; dragging back holds at 0; a second pointer turns a gesture into a pinch for good, and `pointercancel` ends it; `pinchProgress` is log2, re-anchors at each level and locks its direction past ±0.1; `velocity` over the 100 ms window; wheel gestures (one action per burst, the 150 ms reset, Shift with `dx` only, Ctrl + wheel zooms).
 - `motion`: frames at progress 0 and 1 match the resting states; `settle` at 0.5 and for flings both ways; the zoom rubber band never commits.
@@ -375,12 +415,12 @@ Turn, zoom and the panel drop are **transitions**: each moves the picker from it
 
 **Component tests** (`@solidjs/testing-library`, jsdom), driven by user-level events:
 
-- `FaceGrid`: one Tab stop; arrows move `aria-checked` and `document.activeElement`; an `approx` ring leaves no radio checked; Shift + Arrow dispatches a turn.
+- `FaceGrid`: one Tab stop; arrows move `aria-checked` and `document.activeElement`; an `approx` ring leaves no radio checked; Shift + Arrow dispatches a turn; clicking a patch picks `patchColor` of its position; only the ringed patch has an `hsl()` label. A `MutationObserver` on the patches sees only the ringed patch's `aria-label` change on a depth change, and changes on only the old and new ringed patch on a ring move. jsdom doesn't evaluate `var()` or `calc()`, so painted colors are checked in Storybook (below).
 - `Ceiling` / `DepthPanel`: toggling `aria-expanded`, focus moving into the panel and back, `DepthSlider` reporting numbers.
 - `HslPicker`: confirm calls `onConfirm` with the rounded selection; cancel calls `onCancel`; double-click zooms. Controlled: a pick calls `onChange` but the ring moves only when `value` changes, and a new `value` from the parent moves it.
 - jsdom has no layout and no real pointer gestures, so drag and pinch recognition and the settle rule are covered by the pure `pointerGesture`, `pinchProgress` and `settle` tests, not by component tests.
 
-**Storybook** stories (with the a11y addon): `FaceGrid` on all six faces and at each zoom level; a selection at S = 0 and at S = 100; an approximate (dashed) ring; `Ceiling` collapsed and expanded; `PickerFace` composed; `HslPicker` interactive; `PalettePage` empty and populated.
+**Storybook** stories (with the a11y addon): `FaceGrid` on all six faces and at each zoom level, with a play function that compares a few patches' computed `background-color` (a real browser evaluates the CSS formula) against `toHex(patchColor(…))`, within one 8-bit step per channel; a selection at S = 0 and at S = 100; an approximate (dashed) ring; `Ceiling` collapsed and expanded; `PickerFace` composed; `HslPicker` interactive; `PalettePage` empty and populated.
 
 ## 11. Open questions carried from requirements
 
@@ -394,6 +434,7 @@ Turn, zoom and the panel drop are **transitions**: each moves the picker from it
 | Desktop layout            | **Proposed**: the phone layout centered at `max-width: 430px`; no wider grid.                                                                                                                                                    |
 | Fonts                     | **Proposed**: `@fontsource` packages ([§7](#7-styling)). Raised by this spec.                                                                                                                                                    |
 | Surface texture           | **Proposed**: a dot grid at the patch spacing ([§7](#7-styling)). Alternatives are film grain (an SVG noise filter) or fine ruled lines. Raised in review.                                                                       |
+| Patch labels              | **Deviation**: only the ringed patch is labelled with its `hsl()` value; the others have positional labels, so no label changes per patch ([§4.4](#44-facegrid-and-patches)). Raised in review.                                  |
 | Window anchoring          | **Proposed**: a stored window center, so a pick never moves the grid ([§3.4](#34-grid-window-and-zoom)). Fixes double-click and keyboard edges, but changes how picking feels. Decide when building tasks 2–3. Raised in review. |
 
 ## 12. Task breakdown notes
@@ -401,11 +442,11 @@ Turn, zoom and the panel drop are **transitions**: each moves the picker from it
 Candidate tasks for `/tasks:tasks-setup`, in dependency order. Each is shippable on its own, with tests and, for components, a story.
 
 1. **Color core**: `src/color/hsl.ts` and tests.
-2. **Cube, lattice and face data**: `cube.ts`, `lattice.ts`, `face.ts` and tests. Depends on 1.
+2. **Cube, lattice and face data**: `cube.ts`, `lattice.ts`, `face.ts` (including `faceLayout`, `patchColor`, `faceVars`, `patchBackground`) and tests. Depends on 1.
 3. **Picker reducer**: `state.ts` and tests. Depends on 2.
 4. **Gesture classifiers**: `gestures.ts` and tests: `pointerGesture`, `pinchProgress`, `velocity()` and the wheel reducer. Depends on 3.
 5. **Theme, schemes and fonts**: `panda.config.ts` (two schemes, the scheme condition), surface pattern, font packages, `theme.ts` and tests. Depends on 1.
-6. **FaceGrid**: radiogroup, roving tabindex, keyboard, ring variants, stories. Depends on 2, 3, 5.
+6. **FaceGrid**: radiogroup, roving tabindex, keyboard, ring variants, patch colors in CSS ([§7.1](#71-patch-colors-in-css)), ring-only labels, stories. Depends on 2, 3, 5.
 7. **Ceiling, DepthPanel and DepthSlider**: stories, focus handling. Depends on 2, 3, 5.
 8. **PeekStrip and ZoomControl**. Depends on 2, 3, 5.
 9. **PickerFace and HslPicker composition**: confirm/cancel, live region. Depends on 6, 7, 8.

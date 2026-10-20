@@ -20,7 +20,8 @@ Files `src/picker/HslPicker.tsx`, `PickerFace.tsx`.
 
 - Props `{ value?, initialColor?, onChange?, onConfirm, onCancel }`. A single
   `view()` (state with the displayed selection) feeds dispatch and the memoized
-  `faceCells` / `peekStrips` / `ceilingStops`; in controlled mode a pick only
+  `faceLayout` / `peekStrips` / `ceilingStops`; the grid and strips get
+  `FaceParams`, never color lists (spec §7.1). In controlled mode a pick only
   calls `onChange`.
 - `PickerFace` lays out depth label, ceiling, grid region (axis labels, four
   strips, grid), footer (zoom, hints); `DepthPanel` is the grid region's sibling,
@@ -29,7 +30,7 @@ Files `src/picker/HslPicker.tsx`, `PickerFace.tsx`.
   bottom strip → zoom out → zoom in → confirm.
 - Header (close, title) and confirm button (selection background, `toCss` label,
   `contrastInk` ink); `aria-live` announcement after a turn; scheme and tint from
-  `screenScheme` applied to the root. Scheme changes cross-fade
+  `screenScheme` (a memo fed by `faceColors`: follows picks, moves, depth steps and committed turns/zooms, never a transition's preview) applied to the root. Scheme changes cross-fade
   `background-color` and `color` over 300 ms, instantly under `_motionReduce`.
 - `turn`, `zoom` and `toggleExpanded` dispatch directly here;
   `picker/transitions` later routes them through the transition controller.

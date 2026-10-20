@@ -11,9 +11,12 @@ _Nothing yet._
 ## model
 
 **Status:** not started
-**Updated:** 2026-10-19
+**Updated:** 2026-10-20
 
 - 2026-10-19: filed. Goal: cube.ts, lattice.ts, face.ts: faces, turns, axisWindow, faceCells, peekStrips, ceilingStops
+- 2026-10-20: plan revised: patch colors are computed in CSS (spec §3.5, §7.1). face.ts adds faceLayout (nine affine FaceParams + ring), patchColor, faceVars and patchBackground; peekStrips returns FaceParams; faceCells stays as the test reference and screenScheme input.
+- 2026-10-20: plan revised after review: axisWindow also returns step and first (k₀·step, un-normalized) for faceLayout; y base is first + (rows − 1)·step; faceCells is replaced by faceColors(params) (patchColor at all 35 positions) and the independent reference grid moves into face.test.ts.
+- 2026-10-20: plan revised after review: exact compares the lattice value rounded to 0.1 with the selection instead of a raw 0.05 tolerance, which misfires on values like 18.75 (stored 18.8); first + i·step matches values[i] only after rounding.
 
 ## reducer
 
