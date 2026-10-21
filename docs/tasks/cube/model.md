@@ -1,8 +1,9 @@
 ---
 title: Cube, lattice and face data
-status: todo
+status: done
 deps: [color/hsl]
 summary: "cube.ts, lattice.ts, face.ts: faces, turns, axisWindow, faceLayout, patchColor, faceColors, peekStrips, ceilingStops, CSS formula strings"
+done: "2026-10-20 #13"
 ---
 
 # Cube, lattice and face data
@@ -24,7 +25,8 @@ Spec [§3.2–3.5](../../hsl-picker/design-spec.md#32-cube-state), [§7.1](../..
   per variable and zoom (S/L clamp inside 0–100, hue wraps); values computed as
   `k · step`, never accumulated; returns `step` and `first` (`k₀ · step`, before
   `normalizeHue`) alongside `values`, `nearest` and `exact`. When `selected` falls outside the window from
-  `center`, the window centers on `selected`. `exact` compares the rounded
+  `center`, the window centers on `selected`; it counts as inside while its nearest
+  lattice index is one of the window's, leaving a half-step margin at each edge. `exact` compares the rounded
   lattice value with `selected` (a raw 0.05 tolerance misfires on 18.75 → 18.8).
 - `face.ts`:
   - `faceLayout` returns `FaceParams`, an `Affine` `{ base, perCol, perRow }` per
@@ -47,8 +49,9 @@ Spec [§3.2–3.5](../../hsl-picker/design-spec.md#32-cube-state), [§7.1](../..
     `patchBackground(col, row)` returns the `hsl(calc(…))` formula with `col`
     and `row` written in as literals.
 
-Window anchoring on a stored `center` is **Proposed** (spec §11): decide here,
-before `cube/reducer` builds on it.
+Window anchoring is decided here (spec §11): keep the stored `center`. A window
+that centers on the selection instead pins the ring to the middle of the grid and
+slides the colors under the pointer, so `center` stays.
 
 ## How to Verify
 

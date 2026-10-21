@@ -34,6 +34,10 @@ export const roundHsl = (c: Hsl): Hsl => ({
   l: roundTenth(clampPercent(c.l)),
 });
 
+/** Rounds one channel exactly as `roundHsl` stores it (hue: 359.96 → 0, s/l clamped). */
+export const roundChannel = (channel: keyof Hsl, value: number): number =>
+  roundHsl({ h: 0, s: 0, l: 0, [channel]: value })[channel];
+
 /** `"hsl(210 64% 56%)"`. Prints values as given; pass a rounded color for clean output. */
 export const toCss = (c: Hsl): string => `hsl(${c.h} ${c.s}% ${c.l}%)`;
 
