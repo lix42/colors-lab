@@ -64,8 +64,8 @@ graph TD
 **HSL cube model**
 > The pure HSL cube: faces and turns, the zoom lattice, face data, the picker reducer, and gesture classifiers. No Solid or DOM.
 
-- [~] [Cube, lattice and face data](tasks/cube/model.md) — cube.ts, lattice.ts, face.ts: faces, turns, axisWindow, faceLayout, patchColor, faceColors, peekStrips, ceilingStops, CSS formula strings
 - [ ] [Gesture classifiers](tasks/cube/gestures.md) — pointerGesture, pinchProgress, velocity, wheel reducer in gestures.ts · **waits on** `cube/reducer`
+- [ ] [Cube, lattice and face data](tasks/cube/model.md) — cube.ts, lattice.ts, face.ts: faces, turns, axisWindow, faceLayout, patchColor, faceColors, peekStrips, ceilingStops, CSS formula strings
 - [ ] [Picker reducer](tasks/cube/reducer.md) — PickerState, PickerAction, pickerReducer in state.ts · **waits on** `cube/model`
 
 ### picker — [progress](progress/picker.md)

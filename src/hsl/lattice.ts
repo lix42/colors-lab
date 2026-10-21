@@ -1,5 +1,5 @@
-import { normalizeHue, roundHsl } from "../color/hsl";
-import type { Variable } from "./cube";
+import { normalizeHue, roundChannel } from "../color/hsl";
+import { type Variable, VARIABLES } from "./cube";
 
 /** Shown as 2^z: 1×, 2×, 4×, 8×, 16×. */
 export type ZoomLevel = 0 | 1 | 2 | 3 | 4;
@@ -17,43 +17,53 @@ export type AxisWindow = {
   first: number;
 };
 
-/** Rounds one channel exactly as `roundHsl` would store it (hue: 359.96 → 0). */
-export const roundChannel = (variable: Variable, value: number): number =>
-  roundHsl({ h: 0, s: 0, l: 0, [variable]: value })[variable];
-
 const clamp = (x: number, min: number, max: number): number => Math.min(max, Math.max(min, x));
 
 /**
- * The n patch values of one axis at a zoom level, on a lattice fixed per variable, n and zoom,
- * centered on the lattice value nearest `selected`. S and L shift to stay inside 0–100; hue wraps.
- * Values are computed per lattice index, never accumulated, so nothing drifts.
+ * The n patch values of one axis at a zoom level, on a lattice fixed per variable, n and zoom.
+ * The window is centered on `center`, so picking a patch never moves the grid; when `selected`
+ * falls outside it, it centers on `selected` instead, so `nearest` always describes a value in
+ * the window. S and L shift to stay inside 0–100; hue wraps. Values are computed per lattice
+ * index, never accumulated, so nothing drifts.
  */
 export const axisWindow = (
   variable: Variable,
   n: number,
   zoom: ZoomLevel,
+  center: number,
   selected: number,
 ): AxisWindow => {
-  const half = Math.floor(n / 2);
-  const wraps = variable === "h";
-  const max = wraps ? 360 : 100;
+  const { wraps, max } = VARIABLES[variable];
   const steps = (wraps ? n : n - 1) * 2 ** zoom;
   const step = max / steps;
   // k · max / steps is k · step with a single rounding, so the S/L ends are exactly 0 and 100
   const at = (k: number) => (k * max) / steps;
-  let k0: number;
-  let nearest: number;
-  if (wraps) {
-    k0 = (Math.round(selected / step) % steps) - half;
-    nearest = half;
-  } else {
-    const c = clamp(Math.round(selected / step), 0, steps);
-    k0 = clamp(c - half, 0, steps - (n - 1));
-    nearest = c - k0;
+  const half = Math.floor(n / 2);
+  const indexOf = (value: number) =>
+    wraps
+      ? ((Math.round(value / step) % steps) + steps) % steps
+      : clamp(Math.round(value / step), 0, steps);
+  // The window's first index, centered on a lattice index; S and L stay inside 0–100.
+  const startAt = (k: number) => (wraps ? k - half : clamp(k - half, 0, steps - (n - 1)));
+
+  const picked = indexOf(selected);
+  let k0 = startAt(indexOf(center));
+  // A selection counts as inside while its nearest lattice index is one of the window's, so a
+  // value up to half a step past the edge rings the edge patch rather than moving the window.
+  let nearest = wraps ? (((picked - k0) % steps) + steps) % steps : picked - k0;
+  if (nearest < 0 || nearest >= n) {
+    k0 = startAt(picked);
+    nearest = picked - k0;
   }
+
   const values = Array.from({ length: n }, (_, i) =>
     wraps ? normalizeHue(at(k0 + i)) : at(k0 + i),
   );
-  const exact = roundChannel(variable, values[nearest]) === selected;
-  return { values, nearest, exact, step, first: at(k0) };
+  return {
+    values,
+    nearest,
+    exact: roundChannel(variable, values[nearest]) === selected,
+    step,
+    first: at(k0),
+  };
 };

@@ -23,23 +23,27 @@ const alongRows = (w: AxisWindow): Affine => ({
   perRow: -w.step,
 });
 
+// Built key by key rather than by assigning through face[role], so a Face with a repeated
+// variable (which the type allows) can only duplicate an Affine, never leave one undefined.
 const onFace = (face: Face, parts: Record<keyof Face, Affine>): FaceParams => {
-  const params = {} as FaceParams;
-  for (const role of ["depth", "x", "y"] as const) params[face[role]] = parts[role];
-  return params;
+  const forVariable = (v: Variable): Affine =>
+    v === face.depth ? parts.depth : v === face.x ? parts.x : parts.y;
+  return { h: forVariable("h"), s: forVariable("s"), l: forVariable("l") };
 };
 
 /**
  * The face as nine numbers (bases never normalized: a hue base on x can be negative, one on y
- * can reach 360 or more) plus where the ring sits. Both windows center on the selection.
+ * can reach 360 or more) plus where the ring sits. Both windows are centered on `center`, so a
+ * pick never moves the grid.
  */
 export const faceLayout = (
   face: Face,
+  center: Hsl,
   selection: Hsl,
   zoom: ZoomLevel,
 ): { params: FaceParams; ring: Ring } => {
-  const wx = axisWindow(face.x, GRID_COLUMNS, zoom, selection[face.x]);
-  const wy = axisWindow(face.y, GRID_ROWS, zoom, selection[face.y]);
+  const wx = axisWindow(face.x, GRID_COLUMNS, zoom, center[face.x], selection[face.x]);
+  const wy = axisWindow(face.y, GRID_ROWS, zoom, center[face.y], selection[face.y]);
   return {
     params: onFace(face, {
       depth: constant(selection[face.depth]),
@@ -68,8 +72,9 @@ export const faceColors = (params: FaceParams): Hsl[] =>
   );
 
 /**
- * The edge of the face each turn would show, from windows centered on the selection (a turn
- * re-centers). Left/right cells are indexed by row, top/bottom cells by column.
+ * The edge of the face each turn would show. A turn re-centers on the selection, so every window
+ * here is the re-centered one, never one from the current `center`; the strips then match the
+ * face that appears. Left/right cells are indexed by row, top/bottom cells by column.
  */
 export const peekStrips = (
   face: Face,
@@ -77,7 +82,7 @@ export const peekStrips = (
   zoom: ZoomLevel,
 ): Record<PeekSide, FaceParams> => {
   const windowOf = (variable: Variable, n: number) =>
-    axisWindow(variable, n, zoom, selection[variable]);
+    axisWindow(variable, n, zoom, selection[variable], selection[variable]);
 
   const depthOnX = windowOf(face.depth, GRID_COLUMNS);
   const y = alongRows(windowOf(face.y, GRID_ROWS));

@@ -14,7 +14,7 @@ const key = (f: Face) => `${f.depth}${f.x}${f.y}`;
 
 describe("turn", () => {
   it("visits all six faces alternating horizontal and vertical, then returns to START_FACE", () => {
-    let face = START_FACE;
+    let face: Face = START_FACE;
     const seen = [key(face)];
     for (let i = 0; i < 6; i++) {
       face = turn(face, i % 2 === 0 ? "horizontal" : "vertical");

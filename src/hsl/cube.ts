@@ -3,16 +3,16 @@ export type Variable = "h" | "s" | "l";
 /** Which variable is on the slider (depth) and on each grid axis; all three distinct. */
 export type Face = { depth: Variable; x: Variable; y: Variable };
 
-export const START_FACE: Face = { depth: "l", x: "h", y: "s" };
+export const START_FACE = { depth: "l", x: "h", y: "s" } as const satisfies Face;
 
-export const VARIABLES: Record<
-  Variable,
-  { name: string; unit: "°" | "%"; max: number; wraps: boolean }
-> = {
+export const VARIABLES = {
   h: { name: "Hue", unit: "°", max: 360, wraps: true },
   s: { name: "Saturation", unit: "%", max: 100, wraps: false },
   l: { name: "Lightness", unit: "%", max: 100, wraps: false },
-};
+} as const satisfies Record<
+  Variable,
+  { name: string; unit: "°" | "%"; max: number; wraps: boolean }
+>;
 
 export type TurnAxis = "horizontal" | "vertical";
 
