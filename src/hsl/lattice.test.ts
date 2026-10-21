@@ -6,7 +6,7 @@ const ZOOMS: ZoomLevel[] = [0, 1, 2, 3, 4];
 
 describe("axisWindow: saturation and lightness", () => {
   it.each([0, 12.5, 37, 64, 100])(
-    "at zoom 0 the 5-value window is the full range (selected %d)",
+    "at zoom 0 the 5-value window is the full range (centered %d)",
     (sel) => {
       expect(axisWindow("s", 5, 0, sel, sel).values).toEqual([0, 25, 50, 75, 100]);
       expect(axisWindow("l", 5, 0, sel, sel).values).toEqual([0, 25, 50, 75, 100]);
@@ -34,8 +34,10 @@ describe("axisWindow: saturation and lightness", () => {
     expect(w.exact).toBe(true);
   });
 
-  it("moves with the center", () => {
-    expect(axisWindow("s", 5, 2, 62.5, 62.5).values).toEqual([50, 56.25, 62.5, 68.75, 75]);
+  it("moves with the center, not with the selection", () => {
+    // the selection stays at 50 and only the center moves, so the window has to follow the center
+    expect(axisWindow("s", 5, 2, 50, 50).values).toEqual([37.5, 43.75, 50, 56.25, 62.5]);
+    expect(axisWindow("s", 5, 2, 62.5, 50).values).toEqual([50, 56.25, 62.5, 68.75, 75]);
   });
 
   it.each(ZOOMS.flatMap((z) => [0, 0.1, 99.9, 100].map((sel) => [z, sel] as const)))(

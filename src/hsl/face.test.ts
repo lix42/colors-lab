@@ -125,7 +125,8 @@ describe("faceLayout: a center apart from the selection", () => {
   });
 
   it("re-centers when the selection is below the window, keeping the ring on the grid", () => {
-    // center 90 puts the window at 77.5…102.5 → clamped to 75…100; the selection 64 is below it
+    // center 90 snaps to the lattice value 87.5, so the window is 75…100; the selection 64
+    // (nearest 62.5) is below it
     const face: Face = { depth: "h", x: "s", y: "l" };
     const { params, ring } = faceLayout(face, { ...sel, s: 90 }, sel, 2);
     expect(params.s.base).toBe(50);
