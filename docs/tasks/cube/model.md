@@ -1,6 +1,6 @@
 ---
 title: Cube, lattice and face data
-status: todo
+status: doing
 deps: [color/hsl]
 summary: "cube.ts, lattice.ts, face.ts: faces, turns, axisWindow, faceLayout, patchColor, faceColors, peekStrips, ceilingStops, CSS formula strings"
 ---

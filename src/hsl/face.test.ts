@@ -124,6 +124,23 @@ describe("faceLayout: a center apart from the selection", () => {
     expect(ring.col).toBe(2);
   });
 
+  it("re-centers when the selection is below the window, keeping the ring on the grid", () => {
+    // center 90 puts the window at 77.5…102.5 → clamped to 75…100; the selection 64 is below it
+    const face: Face = { depth: "h", x: "s", y: "l" };
+    const { params, ring } = faceLayout(face, { ...sel, s: 90 }, sel, 2);
+    expect(params.s.base).toBe(50);
+    expect(ring).toMatchObject({ col: 2, kind: "approx" });
+  });
+
+  it("keeps an exact ring when the center sits above the selection", () => {
+    const face: Face = { depth: "h", x: "s", y: "l" };
+    // both axes on a lattice value at zoom 2: S 62.5 (step 6.25) and L 50 (step 100/24)
+    const exact = { ...sel, s: 62.5, l: 50 };
+    const { params, ring } = faceLayout(face, { ...exact, s: 75 }, exact, 2);
+    expect(params.s.base).toBe(62.5);
+    expect(ring).toMatchObject({ col: 0, kind: "exact" });
+  });
+
   it("keeps the window while the selection is within half a step of the edge", () => {
     // zoom 2 on S: the window from center 50 ends at 62.5; 65 is nearer 62.5 than 68.75
     const face: Face = { depth: "h", x: "s", y: "l" };
@@ -261,11 +278,10 @@ describe("ceilingStops", () => {
 });
 
 describe("faceVars", () => {
-  // S on x and L on y, so all three variables have a distinct non-zero slope to mix up
-  const mixed: Face = { depth: "h", x: "s", y: "l" };
-
-  it("maps every property to its own affine term", () => {
-    const { params } = faceLayout(mixed, { h: 210, s: 64, l: 56 }, { h: 210, s: 64, l: 56 }, 2);
+  // Across all six faces every slot is non-zero somewhere, so no two keys stay interchangeable
+  it.each(ALL_FACES)("%j: maps every property to its own affine term", (face) => {
+    const sel = { h: 210, s: 64, l: 56 };
+    const { params } = faceLayout(face, sel, sel, 2);
     expect(faceVars(params)).toEqual({
       "--h-base": params.h.base,
       "--h-col": params.h.perCol,

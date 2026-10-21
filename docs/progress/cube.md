@@ -10,7 +10,7 @@ _Nothing yet._
 
 ## model
 
-**Status:** not started
+**Status:** in progress
 **Updated:** 2026-10-20
 
 - 2026-10-19: filed. Goal: cube.ts, lattice.ts, face.ts: faces, turns, axisWindow, faceCells, peekStrips, ceilingStops

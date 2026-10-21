@@ -13,7 +13,7 @@ describe("axisWindow: saturation and lightness", () => {
     },
   );
 
-  it.each([0, 40, 100])("at zoom 0 the 7-value window is the full range (selected %d)", (sel) => {
+  it.each([0, 40, 100])("at zoom 0 the 7-value window is the full range (centered %d)", (sel) => {
     expect(axisWindow("s", 7, 0, sel, sel).values).toEqual([
       0,
       100 / 6,
@@ -34,7 +34,7 @@ describe("axisWindow: saturation and lightness", () => {
     expect(w.exact).toBe(true);
   });
 
-  it("follows the selection: a different pick shifts the window", () => {
+  it("moves with the center", () => {
     expect(axisWindow("s", 5, 2, 62.5, 62.5).values).toEqual([50, 56.25, 62.5, 68.75, 75]);
   });
 
@@ -97,6 +97,20 @@ describe("axisWindow: center apart from the selection", () => {
     expect(w.exact).toBe(false);
   });
 
+  it("re-centers on a selection below the window", () => {
+    const w = axisWindow("s", 5, 2, 50, 20);
+    expect(w.values).toEqual([6.25, 12.5, 18.75, 25, 31.25]);
+    expect(w.nearest).toBe(2);
+  });
+
+  it("keeps the window for a selection within half a step below the first value", () => {
+    // step 6.25: the window from center 50 starts at 37.5, and 36 is nearer it than 31.25
+    const w = axisWindow("s", 5, 2, 50, 36);
+    expect(w.values[0]).toBe(37.5);
+    expect(w.nearest).toBe(0);
+    expect(w.exact).toBe(false);
+  });
+
   it("re-centers across the hue wrap", () => {
     // zoom 3, n 5: step 9, so the window around the lattice value 9 reaches back past 0
     const w = axisWindow("h", 5, 3, 180, 9);
@@ -142,7 +156,7 @@ describe("axisWindow: hue", () => {
     expect(w.values[w.nearest]).toBe(9);
   });
 
-  it("the selection's lattice value is always the middle", () => {
+  it("puts the center's lattice value in the middle at every zoom", () => {
     for (const sel of [0, 0.1, 179.9, 359.9]) {
       for (const zoom of ZOOMS) {
         const w = axisWindow("h", 7, zoom, sel, sel);
