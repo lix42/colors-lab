@@ -1,6 +1,6 @@
 ---
 title: Cube, lattice and face data
-status: todo
+status: doing
 deps: [color/hsl]
 summary: "cube.ts, lattice.ts, face.ts: faces, turns, axisWindow, faceLayout, patchColor, faceColors, peekStrips, ceilingStops, CSS formula strings"
 ---
@@ -20,11 +20,11 @@ Spec [§3.2–3.5](../../hsl-picker/design-spec.md#32-cube-state), [§7.1](../..
 
 - `cube.ts`: `Variable`, `Face`, `START_FACE`, `VARIABLES`, `turn(face, axis)`,
   `axisOf(direction)`.
-- `lattice.ts`: `axisWindow(variable, n, zoom, center, selected)` on a fixed lattice
+- `lattice.ts`: `axisWindow(variable, n, zoom, selected)` on a fixed lattice
   per variable and zoom (S/L clamp inside 0–100, hue wraps); values computed as
   `k · step`, never accumulated; returns `step` and `first` (`k₀ · step`, before
-  `normalizeHue`) alongside `values`, `nearest` and `exact`. When `selected` falls outside the window from
-  `center`, the window centers on `selected`. `exact` compares the rounded
+  `normalizeHue`) alongside `values`, `nearest` and `exact`. The window centers on
+  the lattice value nearest `selected`. `exact` compares the rounded
   lattice value with `selected` (a raw 0.05 tolerance misfires on 18.75 → 18.8).
 - `face.ts`:
   - `faceLayout` returns `FaceParams`, an `Affine` `{ base, perCol, perRow }` per
@@ -39,7 +39,7 @@ Spec [§3.2–3.5](../../hsl-picker/design-spec.md#32-cube-state), [§7.1](../..
     `screenScheme`'s input, not used for rendering. The independent reference
     grid (built from `axisWindow` directly) lives in `face.test.ts`.
   - `peekStrips`: one `FaceParams` per strip (left/right indexed by row,
-    top/bottom by column), always from the re-centered windows, matching the
+    top/bottom by column), from the selection-centered windows, matching the
     face a turn shows.
   - `ceilingStops` (max first; hue 359.9 → 0).
   - CSS strings: `faceVars(params)` returns all nine custom properties
@@ -47,8 +47,8 @@ Spec [§3.2–3.5](../../hsl-picker/design-spec.md#32-cube-state), [§7.1](../..
     `patchBackground(col, row)` returns the `hsl(calc(…))` formula with `col`
     and `row` written in as literals.
 
-Window anchoring on a stored `center` is **Proposed** (spec §11): decide here,
-before `cube/reducer` builds on it.
+Window anchoring is decided here (spec §11): the window centers on the
+selection; there is no stored `center`.
 
 ## How to Verify
 
@@ -57,8 +57,7 @@ identity; S/L windows at zoom 0 are exactly `[0, 25, 50, 75, 100]` (and the 7-va
 one); windows at the ends stay in 0–100; hue wraps at 350° 1×; no drift at zoom 4;
 `exact` vs nearest after zooming out from a fine pick; an exact pick of S 18.75
 at zoom 2 (stored 18.8) is `exact`; `normalizeHue(first + i · step)` matches
-`values[i]` after rounding; out-of-window `selected`
-re-centers; ring placement; peek strips match the turned face's edges.
+`values[i]` after rounding; the window follows the selection; ring placement; peek strips match the turned face's edges.
 `patchColor(faceLayout(…).params, col, row)` equals the reference grid at every cell
 for all six faces, every zoom level, selections at S/L 0 and 100 and hue windows
 across 0/360; each strip's `FaceParams` matches its `axisWindow` definition the

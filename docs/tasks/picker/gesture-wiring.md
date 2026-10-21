@@ -23,7 +23,9 @@ Spec [§5](../../hsl-picker/design-spec.md#5-interaction-and-input-handling), [�
   `pointerup`); `touch-action: none`.
 - Wheel: non-passive listener added in `onMount`, removed in `onCleanup`, through
   `wheelGesture`; triggered actions.
-- `dblclick` on a patch: zoom, `altKey` zooms out.
+- `dblclick` on a patch: zoom, `altKey` zooms out. On a zoomed grid the first
+  click's pick re-centers the window, so the second click can hit another patch
+  (spec §5.3, known issue): re-pick the first click's color before zooming.
 - Panel drag: down from the ceiling, up on the open panel's header; the slider
   track never starts a drag. Past the slop it captures the pointer and arms the
   same click swallower, so the ceiling's own click doesn't toggle the panel back

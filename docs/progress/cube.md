@@ -10,13 +10,14 @@ _Nothing yet._
 
 ## model
 
-**Status:** not started
+**Status:** in progress
 **Updated:** 2026-10-20
 
 - 2026-10-19: filed. Goal: cube.ts, lattice.ts, face.ts: faces, turns, axisWindow, faceCells, peekStrips, ceilingStops
 - 2026-10-20: plan revised: patch colors are computed in CSS (spec §3.5, §7.1). face.ts adds faceLayout (nine affine FaceParams + ring), patchColor, faceVars and patchBackground; peekStrips returns FaceParams; faceCells stays as the test reference and screenScheme input.
 - 2026-10-20: plan revised after review: axisWindow also returns step and first (k₀·step, un-normalized) for faceLayout; y base is first + (rows − 1)·step; faceCells is replaced by faceColors(params) (patchColor at all 35 positions) and the independent reference grid moves into face.test.ts.
 - 2026-10-20: plan revised after review: exact compares the lattice value rounded to 0.1 with the selection instead of a raw 0.05 tolerance, which misfires on values like 18.75 (stored 18.8); first + i·step matches values[i] only after rounding.
+- 2026-10-20: Started. Decision: window anchoring settled as center-on-selection (user choice) instead of the Proposed stored center: axisWindow(variable, n, zoom, selected) and faceLayout(face, selection, zoom) take no center; spec §3.4–3.6, §5.3, §11 and cube/reducer updated to match. Known issue left for picker/gesture-wiring: zoomed windows move on pick, so dblclick's second click can land on a different patch.
 
 ## reducer
 
