@@ -8,7 +8,7 @@ export const GRID_ROWS = 7;
 /** value = base + col · perCol + row · perRow */
 export type Affine = { base: number; perCol: number; perRow: number };
 export type FaceParams = Record<Variable, Affine>;
-export type Ring = { col: number; row: number; kind: "exact" | "approx" };
+export type SelectionMark = { col: number; row: number; kind: "exact" | "approx" };
 export type PeekSide = "left" | "right" | "top" | "bottom";
 
 const constant = (base: number): Affine => ({ base, perCol: 0, perRow: 0 });
@@ -33,7 +33,7 @@ const onFace = (face: Face, parts: Record<keyof Face, Affine>): FaceParams => {
 
 /**
  * The face as nine numbers (bases never normalized: a hue base on x can be negative, one on y
- * can reach 360 or more) plus where the ring sits. Both windows are centered on `center`, so a
+ * can reach 360 or more) plus where the selection mark sits. Both windows are centered on `center`, so a
  * pick never moves the grid.
  */
 export const faceLayout = (
@@ -41,7 +41,7 @@ export const faceLayout = (
   center: Hsl,
   selection: Hsl,
   zoom: ZoomLevel,
-): { params: FaceParams; ring: Ring } => {
+): { params: FaceParams; mark: SelectionMark } => {
   const wx = axisWindow(face.x, GRID_COLUMNS, zoom, center[face.x], selection[face.x]);
   const wy = axisWindow(face.y, GRID_ROWS, zoom, center[face.y], selection[face.y]);
   return {
@@ -50,7 +50,7 @@ export const faceLayout = (
       x: alongColumns(wx),
       y: alongRows(wy),
     }),
-    ring: {
+    mark: {
       col: wx.nearest,
       row: GRID_ROWS - 1 - wy.nearest,
       kind: wx.exact && wy.exact ? "exact" : "approx",

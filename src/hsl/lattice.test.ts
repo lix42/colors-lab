@@ -202,3 +202,37 @@ describe("axisWindow: first and step", () => {
     },
   );
 });
+
+// 5 × 7 is the starting grid, not a fixed one (spec §3.4); the lattice takes any n ≥ 3.
+describe("axisWindow: other patch counts", () => {
+  it("at zoom 0 the S/L window is the full range for n 3 and n 9", () => {
+    expect(axisWindow("s", 3, 0, 64, 64).values).toEqual([0, 50, 100]);
+    expect(axisWindow("s", 9, 0, 64, 64).values).toEqual([
+      0, 12.5, 25, 37.5, 50, 62.5, 75, 87.5, 100,
+    ]);
+  });
+
+  it("at zoom 0 a 3-value hue window splits the circle in thirds", () => {
+    const w = axisWindow("h", 3, 0, 0, 0);
+    expect(w.values).toEqual([240, 0, 120]);
+    expect(w).toMatchObject({ nearest: 1, exact: true, first: -120 });
+  });
+
+  it("a 9-value window shifts to stay inside 0–100", () => {
+    const w = axisWindow("s", 9, 1, 100, 100);
+    expect(w.values[0]).toBe(50);
+    expect(w.values[8]).toBe(100);
+    expect(w).toMatchObject({ nearest: 8, exact: true });
+  });
+
+  it("a 9-value hue window wraps around 0/360", () => {
+    expect(axisWindow("h", 9, 2, 5, 5).values).toEqual([330, 340, 350, 0, 10, 20, 30, 40, 50]);
+  });
+
+  it("an even n puts the center one patch past the middle", () => {
+    // n 4: ⌊4/2⌋ = 2 patches before the center, 1 after
+    const w = axisWindow("s", 4, 1, 50, 50);
+    expect(w.values[2]).toBe(50);
+    expect(w).toMatchObject({ nearest: 2, exact: true });
+  });
+});

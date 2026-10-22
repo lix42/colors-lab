@@ -52,7 +52,7 @@ the narrative beside it. Append entries (`tasks log <id> "…"`); don't rewrite 
 ## reducer
 
 **Status:** not started
-**Updated:** 2026-10-19
+**Updated:** 2026-10-21
 
 - 2026-10-19: filed. Goal: PickerState, PickerAction, pickerReducer in state.ts
 
@@ -62,3 +62,10 @@ the narrative beside it. Append entries (`tasks log <id> "…"`); don't rewrite 
 **Updated:** 2026-10-19
 
 - 2026-10-19: filed. Goal: pointerGesture, pinchProgress, velocity, wheel reducer in gestures.ts
+
+## axis
+
+**Status:** not started
+**Updated:** 2026-10-21
+
+- 2026-10-21: filed. Goal: layLattice/onLattice/axisWindow on a stored lattice; no approx mark; edge rule; lattice.ts renamed axis.ts
