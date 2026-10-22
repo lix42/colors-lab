@@ -1,6 +1,13 @@
 import { type Hsl, roundHsl } from "../color/hsl";
 import { type Face, type Variable, VARIABLES } from "./cube";
-import { type AxisWindow, axisWindow, type ZoomLevel } from "./lattice";
+import {
+  type AxisLattice,
+  type AxisWindow,
+  axisWindow,
+  layLattice,
+  laidWindow,
+  type ZoomLevel,
+} from "./axis";
 
 export const GRID_COLUMNS = 5;
 export const GRID_ROWS = 7;
@@ -8,7 +15,10 @@ export const GRID_ROWS = 7;
 /** value = base + col · perCol + row · perRow */
 export type Affine = { base: number; perCol: number; perRow: number };
 export type FaceParams = Record<Variable, Affine>;
-export type SelectionMark = { col: number; row: number; kind: "exact" | "approx" };
+/** The patch the selection is on. */
+export type SelectionMark = { col: number; row: number };
+/** The lattice of each grid axis; stored per axis because its patch count is the axis's. */
+export type FaceLattice = { x: AxisLattice; y: AxisLattice };
 export type PeekSide = "left" | "right" | "top" | "bottom";
 
 const constant = (base: number): Affine => ({ base, perCol: 0, perRow: 0 });
@@ -31,30 +41,32 @@ const onFace = (face: Face, parts: Record<keyof Face, Affine>): FaceParams => {
   return { h: forVariable("h"), s: forVariable("s"), l: forVariable("l") };
 };
 
+/** Both grid axes' lattices laid from the selection, as on open, turn and zoom. */
+export const layFaceLattice = (face: Face, selection: Hsl, zoom: ZoomLevel): FaceLattice => ({
+  x: layLattice(face.x, GRID_COLUMNS, zoom, selection[face.x]),
+  y: layLattice(face.y, GRID_ROWS, zoom, selection[face.y]),
+});
+
 /**
- * The face as nine numbers (bases never normalized: a hue base on x can be negative, one on y
- * can reach 360 or more) plus where the selection mark sits. Both windows are centered on `center`, so a
- * pick never moves the grid.
+ * The face as nine numbers (bases never normalized: a hue base can be negative or 360 or more)
+ * plus where the selection mark sits. Both windows are centered on `center`, so a pick never moves
+ * the grid.
  */
 export const faceLayout = (
   face: Face,
+  lattice: FaceLattice,
   center: Hsl,
   selection: Hsl,
-  zoom: ZoomLevel,
 ): { params: FaceParams; mark: SelectionMark } => {
-  const wx = axisWindow(face.x, GRID_COLUMNS, zoom, center[face.x], selection[face.x]);
-  const wy = axisWindow(face.y, GRID_ROWS, zoom, center[face.y], selection[face.y]);
+  const wx = axisWindow(face.x, GRID_COLUMNS, lattice.x, center[face.x], selection[face.x]);
+  const wy = axisWindow(face.y, GRID_ROWS, lattice.y, center[face.y], selection[face.y]);
   return {
     params: onFace(face, {
       depth: constant(selection[face.depth]),
       x: alongColumns(wx),
       y: alongRows(wy),
     }),
-    mark: {
-      col: wx.nearest,
-      row: GRID_ROWS - 1 - wy.nearest,
-      kind: wx.exact && wy.exact ? "exact" : "approx",
-    },
+    mark: { col: wx.selectedIndex, row: GRID_ROWS - 1 - wy.selectedIndex },
   };
 };
 
@@ -72,9 +84,10 @@ export const faceColors = (params: FaceParams): Hsl[] =>
   );
 
 /**
- * The edge of the face each turn would show. A turn re-centers on the selection, so every window
- * here is the re-centered one, never one from the current `center`; the strips then match the
- * face that appears. Left/right cells are indexed by row, top/bottom cells by column.
+ * The edge of the face each turn would show. A turn lays the lattice from the selection and
+ * re-centers on it, so every window here is that one, never the stored lattice or `center`; the
+ * strips then match the face that appears. Left/right cells are indexed by row, top/bottom cells
+ * by column.
  */
 export const peekStrips = (
   face: Face,
@@ -82,7 +95,7 @@ export const peekStrips = (
   zoom: ZoomLevel,
 ): Record<PeekSide, FaceParams> => {
   const windowOf = (variable: Variable, n: number) =>
-    axisWindow(variable, n, zoom, selection[variable], selection[variable]);
+    laidWindow(variable, n, zoom, selection[variable]);
 
   const depthOnX = windowOf(face.depth, GRID_COLUMNS);
   const y = alongRows(windowOf(face.y, GRID_ROWS));

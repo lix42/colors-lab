@@ -7,22 +7,28 @@ the narrative beside it. Append entries (`tasks log <id> "…"`); don't rewrite 
 ## Epic summary
 
 - `src/hsl/` is the pure cube model — no Solid, no DOM. `cube.ts` has `Variable`, `Face`,
-  `START_FACE`, `VARIABLES`, `turn`, `axisOf`; `lattice.ts` has `axisWindow`; `face.ts` has
-  `faceLayout`, `patchColor`, `faceColors`, `peekStrips`, `ceilingStops`, `faceVars`,
-  `patchBackground`, and the `GRID_COLUMNS`/`GRID_ROWS` constants.
+  `START_FACE`, `VARIABLES`, `turn`, `axisOf`; `axis.ts` (formerly `lattice.ts`) has `layLattice`,
+  `onLattice`, `axisWindow`, `laidWindow`, `edgeRelay`; `face.ts` has `FaceLattice`,
+  `layFaceLattice`, `faceLayout`, `patchColor`, `faceColors`, `peekStrips`, `ceilingStops`,
+  `faceVars`, `patchBackground`, and the `GRID_COLUMNS`/`GRID_ROWS` constants.
+- **The selection is always a patch** (spec §3.4, `cube/axis`): each grid axis's lattice is laid
+  through the selection (S/L also through one range end) in even steps, and stored as state per
+  axis (`FaceLattice { x, y }`). It is re-laid on open, turn, zoom, a host value that isn't on it,
+  and by the edge rule (`edgeRelay`); never on a pick or arrow move.
 - **Window anchoring is decided** (spec §3.4, §11): the grid window is centered on a stored
   `center`, not on the selection, so a pick never moves the grid. Centering on the selection was
-  built and reversed — it pins the ring to the middle of the grid and slides the colors
+  built and reversed — it pins the selection mark to the middle of the grid and slides the colors
   underneath. `axisWindow` and `faceLayout` take `center`; `peekStrips` and `ceilingStops` do not,
-  because a turn re-centers. This is a **Deviation** from the requirements, recorded in the spec.
+  because a turn re-lays and re-centers. This is a **Deviation** from the requirements, recorded in the spec.
 - A face is nine numbers, not 35 colors: `faceVars(params)` goes on the grid container and
   `patchBackground(col, row)` on each patch, and CSS computes the colors (spec §7.1). All nine
   properties must be present or the patch paints transparent. `faceColors` exists only as
   `screenScheme`'s input, never for rendering.
 - `FaceParams` bases are deliberately unnormalized — a hue base can be negative or past 360.
   CSS and `roundHsl` both wrap them; don't normalize on the way to the DOM.
-- The ring is `exact` only when both axes are; `exact` compares the lattice value rounded the way
-  `roundHsl` rounds that channel, never a raw tolerance.
+- The selection mark has no approximate state. Whether a stored value is on a lattice is
+  `onLattice`: the nearest in-range lattice value rounded the way `roundHsl` rounds that channel,
+  never a raw tolerance.
 
 ## model
 
@@ -65,7 +71,10 @@ the narrative beside it. Append entries (`tasks log <id> "…"`); don't rewrite 
 
 ## axis
 
-**Status:** not started
+**Status:** done
 **Updated:** 2026-10-21
 
 - 2026-10-21: filed. Goal: layLattice/onLattice/axisWindow on a stored lattice; no approx mark; edge rule; lattice.ts renamed axis.ts
+- 2026-10-21: Implemented. src/hsl/lattice.ts → axis.ts: layLattice (hue through the selection; S/L through the selection and one end, step ≤ d₀; reachable end first, then larger step, tie to 0; forced end), onLattice (rounded nearest lattice value), axisWindow on a stored lattice (indices from origin; S/L index range [ceil(−origin/step), floor((100 − origin)/step)] with a 1e-9 epsilon, since 50 / (100/6) is 2.9999999999999996), and edgeRelay (the edge rule; null for hue, middle patches, an end that is already a patch, or a whole step left). face.ts: FaceLattice { x, y } stored per axis (agreed with the user: a lattice depends on the axis's patch count, and turns re-lay it anyway), layFaceLattice, faceLayout(face, lattice, center, selection), SelectionMark without kind; peekStrips lays its own lattices. Spec example corrected: the stored 85.3 gives step 14.7 exactly, so the edge rule re-lays to 41.2, 55.9, 70.6, 85.3, 100. Verified: vp check, vp test (2215).
+- 2026-10-21: Code review fixes: one latticeIndex helper (in-range S/L indices) behind onLattice, axisWindow and edgeRelay, fixing onLattice accepting an off-lattice 0/100 and edgeRelay firing from the rounded selection when the end is a lattice value one step away. The end choice now asks whether the laid, centered window shows the end (distance alone let an off-screen end win). With the user: an end closer than d₀/2 is never the anchor and the edge rule ignores it (option A), since a lattice through both has step ≤ their distance (S 99.9 → 0.1); it is reached by zooming in. nearest renamed selectedIndex; laidWindow exported. Verified: vp check, vp test (2221).
+- 2026-10-21: Done. Landed: src/hsl/lattice.ts → axis.ts with layLattice (hue through the selection; S/L through the selection and one end, step ≤ d₀; an end closer than d₀/2 never anchors; an end the laid window shows wins, else the larger step, tie to 0; forced end), onLattice and axisWindow on one latticeIndex helper, laidWindow, and edgeRelay (edge patch is the last in-range lattice value, the end isn't a patch, and the end is ≥ d₀/2 from the stored selection). face.ts: FaceLattice {x, y}, layFaceLattice, faceLayout(face, lattice, center, selection), SelectionMark without kind; AxisWindow.nearest is now selectedIndex. Verified: vp check, vp test (2222), vp build; review-fix-loop converged. For cube/reducer: store FaceLattice and lay it with layFaceLattice on open, turn and zoom; move steps selectedIndex ± 1 and calls edgeRelay; reachEnd calls edgeRelay after the double-click interval; the draft's ./lattice import becomes ./axis.
