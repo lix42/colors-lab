@@ -8,9 +8,10 @@ the narrative beside it. Append entries (`tasks log <id> "…"`); don't rewrite 
 
 - `src/hsl/` is the pure cube model — no Solid, no DOM. `cube.ts` has `Variable`, `Face`,
   `START_FACE`, `VARIABLES`, `turn`, `axisOf`; `axis.ts` (formerly `lattice.ts`) has `layLattice`,
-  `onLattice`, `axisWindow`, `laidWindow`, `edgeRelay`; `face.ts` has `FaceLattice`,
+  `onLattice`, `axisWindow`, `laidWindow`, `edgeRelay`, `windowCenter`, `axisStep`; `face.ts` has `FaceLattice`,
   `layFaceLattice`, `faceLayout`, `patchColor`, `faceColors`, `peekStrips`, `ceilingStops`,
-  `faceVars`, `patchBackground`, and the `GRID_COLUMNS`/`GRID_ROWS` constants.
+  `faceVars`, `patchBackground`, and the `GRID_COLUMNS`/`GRID_ROWS`/`GRID_SIZE` constants; `state.ts` has `PickerState`,
+  `PickerAction`, `pickerReducer`, `initialPickerState`, `syncLattice`.
 - **The selection is always a patch** (spec §3.4, `cube/axis`): each grid axis's lattice is laid
   through the selection (S/L also through one range end) in even steps, and stored as state per
   axis (`FaceLattice { x, y }`). It is re-laid on open, turn, zoom, a host value that isn't on it,
@@ -26,6 +27,13 @@ the narrative beside it. Append entries (`tasks log <id> "…"`); don't rewrite 
   `screenScheme`'s input, never for rendering.
 - `FaceParams` bases are deliberately unnormalized — a hue base can be negative or past 360.
   CSS and `roundHsl` both wrap them; don't normalize on the way to the DOM.
+- **The reducer contract for picker tasks** (`cube/reducer`): `HslPicker` builds
+  `view = () => syncLattice({ ...state(), selection: selection() })` and dispatches against it;
+  `syncLattice` also stores the window's actual center, so a host value never makes the next pick
+  move the grid. FaceGrid's edge-rule timer dispatches `reachEnd { after }` with the state the
+  pick left; it is compared by value (`view()` is a new object each read), so a turn, zoom, move
+  or another pick cancels it and a depth change doesn't. Actions that change nothing return the
+  same object.
 - The selection mark has no approximate state. Whether a stored value is on a lattice is
   `onLattice`: the nearest in-range lattice value rounded the way `roundHsl` rounds that channel,
   never a raw tolerance.
@@ -57,10 +65,19 @@ the narrative beside it. Append entries (`tasks log <id> "…"`); don't rewrite 
 
 ## reducer
 
-**Status:** not started
-**Updated:** 2026-10-21
+**Status:** done
+**Updated:** 2026-10-22
 
 - 2026-10-19: filed. Goal: PickerState, PickerAction, pickerReducer in state.ts
+- 2026-10-20: Started. Pinned the open rule from cube/model with the user: a zoom clamped at 0 or 4 returns the identical state object and leaves center alone; center resets only when the zoom actually changes (How to Verify's identity rule wins over §3.6's "zoom resets center").
+
+  move's edge scroll: the new center is not old center + step — near the S/L lattice ends the window clamp pins k0, the shifted center re-derives the same window, and the stepped selection falls out and triggers a re-center lurch. Instead the center keeps the selection on the same edge patch: center = (k − d·⌊n/2⌋)·step for the new lattice index k. Unclamped, this is exactly old-center-index + d; clamped at 0/100, the window still moves one step. The moved selection is always a lattice value, so the ring after a move is exact.
+
+  Verified: vp test (1626), vp check.
+
+- 2026-10-21: Reworked on top of cube/axis (#15). The 2026-10-20 draft's edge-scroll formula and its claim that a moved selection is always exact are superseded: the selection is now always a patch by construction. PickerState gains lattice: FaceLattice, laid with layFaceLattice on open, turn and zoom. move is axisStep (new in axis.ts: neighbour, one-step scroll at the edge, then edgeRelay), so state.ts has no lattice index math. reachEnd applies edgeRelay to both axes and returns the same object when neither applies. syncLattice re-lays an axis whose lattice doesn't hold the selection; pick ends with it, and HslPicker's view() will use it for a controlled value, which also fixes the stale-center jump the first review found. move keeps lattice and center as the same objects unless they change. Zoom clamped at 0/4 still returns the same object. Tests: every action, scrolls in all four directions (down from S 100, left across hue 0), the edge rule firing and not, and an 8-seed × 400-action invariant sweep (selection rounded, on both lattices, and the marked patch's color). Verified: vp check, vp test (2268).
+- 2026-10-22: Review fixes: syncLattice stores the window's actual center (new windowCenter in axis.ts), so a host value on the lattice but off the window no longer makes the next pick or arrow scroll the grid; axisStep returns the center it used, and past the last S/L value tries the edge rule so an end that isn't a patch is reachable by keyboard; reachEnd carries after: PickerState and ignores a stale timer; withAxis helper, GRID_SIZE in face.ts. Sweep now covers off-lattice picks, host values and stale reachEnd, and asserts the stored center. Declined: default case in the reducer switch, deduping placeWindow calls.
+- 2026-10-22: Done. PickerState stores lattice: FaceLattice, laid on open/turn/zoom. move = axisStep per axis (neighbour patch, one-step scroll, edge rule; past the last S/L value the edge rule steps onto an end that isn't a patch). pick ends with syncLattice, which re-lays an off-lattice axis and otherwise stores windowCenter, so the grid never jumps. reachEnd {after} applies the edge rule only when sameGrid(state, after), a value comparison because view() rebuilds the state on every read; a depth change doesn't cancel it, a turn/zoom/move/other pick does. Verified: vp check, vp test 2282 (8x400 invariant sweep), vp build; review-fix loop converged after 2 re-reviews. For dependents: picker/compose builds view() with syncLattice and dispatches against it; picker/face-grid's edge timer passes the state the pick left as after.
 
 ## gestures
 

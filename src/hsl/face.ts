@@ -11,6 +11,8 @@ import {
 
 export const GRID_COLUMNS = 5;
 export const GRID_ROWS = 7;
+/** Each grid axis's patch count. */
+export const GRID_SIZE = { x: GRID_COLUMNS, y: GRID_ROWS } as const;
 
 /** value = base + col · perCol + row · perRow */
 export type Affine = { base: number; perCol: number; perRow: number };
@@ -43,8 +45,8 @@ const onFace = (face: Face, parts: Record<keyof Face, Affine>): FaceParams => {
 
 /** Both grid axes' lattices laid from the selection, as on open, turn and zoom. */
 export const layFaceLattice = (face: Face, selection: Hsl, zoom: ZoomLevel): FaceLattice => ({
-  x: layLattice(face.x, GRID_COLUMNS, zoom, selection[face.x]),
-  y: layLattice(face.y, GRID_ROWS, zoom, selection[face.y]),
+  x: layLattice(face.x, GRID_SIZE.x, zoom, selection[face.x]),
+  y: layLattice(face.y, GRID_SIZE.y, zoom, selection[face.y]),
 });
 
 /**

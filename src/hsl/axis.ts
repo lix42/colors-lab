@@ -54,9 +54,9 @@ const latticeIndex = (variable: Variable, lattice: AxisLattice, value: number): 
 };
 
 /**
- * Where the window starts (`k0`, a lattice index) and which of its patches the selection is on.
- * Centered on `center`, so picking a patch never moves the grid; when the selection's index isn't in
- * that window, centered on the selection instead. S and L stay inside 0–100; hue wraps.
+ * Where the window starts (`k0`, a lattice index), which of its patches the selection is on, and the
+ * center it used. Centered on `center`, so picking a patch never moves the grid; when the selection's
+ * index isn't in that window, centered on the selection instead. S and L stay inside 0–100; hue wraps.
  */
 const placeWindow = (
   variable: Variable,
@@ -64,7 +64,7 @@ const placeWindow = (
   lattice: AxisLattice,
   center: number,
   selected: number,
-): { k0: number; selectedIndex: number } => {
+): { k0: number; selectedIndex: number; center: number } => {
   const { wraps } = VARIABLES[variable];
   const { period, lo, hi } = indexRange(variable, lattice);
   const half = Math.floor(n / 2);
@@ -74,9 +74,9 @@ const placeWindow = (
   const picked = latticeIndex(variable, lattice, selected);
   const k0 = startAt(latticeIndex(variable, lattice, center));
   const selectedIndex = offsetIn(k0, picked);
-  if (selectedIndex >= 0 && selectedIndex < n) return { k0, selectedIndex };
+  if (selectedIndex >= 0 && selectedIndex < n) return { k0, selectedIndex, center };
   const recentered = startAt(picked);
-  return { k0: recentered, selectedIndex: offsetIn(recentered, picked) };
+  return { k0: recentered, selectedIndex: offsetIn(recentered, picked), center: selected };
 };
 
 /**
@@ -120,6 +120,18 @@ export const layLattice = (
   if (showsLow !== shows(high)) return showsLow ? low : high;
   return high.step > low.step ? high : low;
 };
+
+/**
+ * The center the window actually uses: `center`, or the selection when the selection isn't in the
+ * window around `center`. Storing it keeps the next pick from moving the grid.
+ */
+export const windowCenter = (
+  variable: Variable,
+  n: number,
+  lattice: AxisLattice,
+  center: number,
+  selected: number,
+): number => placeWindow(variable, n, lattice, center, selected).center;
 
 /** Whether `value` is a lattice value as stored: the nearest one rounded the way roundHsl rounds it. */
 export const onLattice = (variable: Variable, lattice: AxisLattice, value: number): boolean =>
@@ -183,4 +195,44 @@ export const edgeRelay = (
   // Measured from the selection, which the new lattice is laid from, as layLattice measures it.
   if (Math.abs(end - selected) < nominalStep(variable, n, zoom) / 2) return null;
   return { lattice: layLattice(variable, n, zoom, selected, end), center: end };
+};
+
+/**
+ * One arrow-key step along an axis (`d` = +1 toward the max): the neighbouring patch, or past the
+ * window's edge the next lattice value, with the window scrolled one step so the selection stays on
+ * the edge patch. Then the edge rule. The value is stored-rounded; a hue center is normalized. Past
+ * the last S/L lattice value, the edge rule may lay the lattice on the end, which is then the next
+ * patch. Null when S or L can't move further.
+ */
+export const axisStep = (
+  variable: Variable,
+  n: number,
+  zoom: ZoomLevel,
+  lattice: AxisLattice,
+  center: number,
+  selected: number,
+  d: -1 | 1,
+): { value: number; center: number; lattice: AxisLattice } | null => {
+  const { wraps, max } = VARIABLES[variable];
+  const { lo, hi } = indexRange(variable, lattice);
+  const at = (k: number) => lattice.origin + k * lattice.step;
+  const placed = placeWindow(variable, n, lattice, center, selected);
+  const j = placed.selectedIndex + d;
+  const k = placed.k0 + j;
+  if (!wraps && (k < lo || k > hi)) {
+    // The selection is on the edge patch, the last lattice value before the end. Re-laid on that end,
+    // the selection is less than a step from it, so the step is that distance and lands on the end.
+    const relay = edgeRelay(variable, n, zoom, lattice, placed.center, selected);
+    return relay && axisStep(variable, n, zoom, relay.lattice, relay.center, selected, d);
+  }
+  const value = roundChannel(variable, wraps ? normalizeHue(at(k)) : clamp(at(k), 0, max));
+  let next = placed.center;
+  if (j < 0 || j >= n) {
+    // The window starts ⌊n/2⌋ before its center, so this center puts k on the edge it crossed.
+    const half = Math.floor(n / 2);
+    const c = d > 0 ? k - (n - 1) + half : k + half;
+    next = wraps ? normalizeHue(at(c)) : at(c);
+  }
+  const relay = edgeRelay(variable, n, zoom, lattice, next, value);
+  return { value, ...(relay ?? { center: next, lattice }) };
 };
