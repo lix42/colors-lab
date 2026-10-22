@@ -3,7 +3,7 @@ title: Picker reducer
 status: done
 deps: [cube/model, cube/axis]
 summary: PickerState, PickerAction, pickerReducer in state.ts
-done: 2026-10-22
+done: "2026-10-22 #16"
 ---
 
 # Picker reducer
