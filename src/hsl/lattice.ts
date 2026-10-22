@@ -49,7 +49,7 @@ export const axisWindow = (
   const picked = indexOf(selected);
   let k0 = startAt(indexOf(center));
   // A selection counts as inside while its nearest lattice index is one of the window's, so a
-  // value up to half a step past the edge rings the edge patch rather than moving the window.
+  // value up to half a step past the edge marks the edge patch (approx) rather than moving the window.
   let nearest = wraps ? (((picked - k0) % steps) + steps) % steps : picked - k0;
   if (nearest < 0 || nearest >= n) {
     k0 = startAt(picked);

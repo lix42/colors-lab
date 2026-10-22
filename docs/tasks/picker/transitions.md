@@ -17,14 +17,16 @@ tracked progress that a gesture drives and then settles.
 Spec [§6](../../hsl-picker/design-spec.md#6-animation).
 
 - `src/hsl/motion.ts`: pure `turnFrame(direction, p)`, `zoomFrame(delta, p)`,
-  `dropFrame(p)` and `settle(progress, velocity)` (fling ≥ 0.5 px/ms decides by
+  `dropFrame(p)`, `relayFrame(shift, p)` (the edge rule's re-lay slide, spec §6.5)
+  and `settle(progress, velocity)` (fling ≥ 0.5 px/ms decides by
   direction, else progress ≥ 0.5).
 - `src/picker/transition.ts`: one transition at a time,
   `{ action, target, mode, progress }`; tracked progress written per animation
   frame; triggered/settling via `element.animate` with duration scaled by distance
   left (≥ 120 ms); commit re-applies the action to the current state; the preview is
   `inert` and `aria-hidden`; interruption finishes the running one first.
-- `HslPicker` routes `turn`, `zoom`, `toggleExpanded` through it and renders
+- `HslPicker` routes `turn`, `zoom`, `toggleExpanded` and the edge rule's re-lay
+  (`reachEnd`, and a `move` that re-lays) through it and renders
   current + target during a transition.
 - Zoom limit rubber band (≤ 0.15, always cancels). Reduced motion: instant
   triggered/settle, cross-fade for tracked (Deviation).

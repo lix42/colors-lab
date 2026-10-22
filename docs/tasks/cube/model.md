@@ -31,7 +31,7 @@ Spec [§3.2–3.5](../../hsl-picker/design-spec.md#32-cube-state), [§7.1](../..
 - `face.ts`:
   - `faceLayout` returns `FaceParams`, an `Affine` `{ base, perCol, perRow }` per
     variable (x grows with the column, y shrinks with the row so the top row is
-    the y max, depth is constant), plus the `Ring` (`col`, `row`,
+    the y max, depth is constant), plus the `SelectionMark` (`col`, `row`,
     `exact`/`approx`). Built from `axisWindow`'s `first` and `step`; the y base is
     `first + (GRID_ROWS − 1) · step`. Bases are never normalized: a hue base on x
     can be negative, one on y can reach 360 or more.
@@ -50,7 +50,7 @@ Spec [§3.2–3.5](../../hsl-picker/design-spec.md#32-cube-state), [§7.1](../..
     and `row` written in as literals.
 
 Window anchoring is decided here (spec §11): keep the stored `center`. A window
-that centers on the selection instead pins the ring to the middle of the grid and
+that centers on the selection instead pins the selection mark to the middle of the grid and
 slides the colors under the pointer, so `center` stays.
 
 ## How to Verify
@@ -61,7 +61,7 @@ one); windows at the ends stay in 0–100; hue wraps at 350° 1×; no drift at z
 `exact` vs nearest after zooming out from a fine pick; an exact pick of S 18.75
 at zoom 2 (stored 18.8) is `exact`; `normalizeHue(first + i · step)` matches
 `values[i]` after rounding; out-of-window `selected`
-re-centers; ring placement; peek strips match the turned face's edges.
+re-centers; selection mark placement; peek strips match the turned face's edges.
 `patchColor(faceLayout(…).params, col, row)` equals the reference grid at every cell
 for all six faces, every zoom level, selections at S/L 0 and 100 and hue windows
 across 0/360; each strip's `FaceParams` matches its `axisWindow` definition the

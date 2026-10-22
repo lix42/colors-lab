@@ -22,7 +22,10 @@ Files `src/picker/HslPicker.tsx`, `PickerFace.tsx`.
   `view()` (state with the displayed selection) feeds dispatch and the memoized
   `faceLayout` / `peekStrips` / `ceilingStops`; the grid and strips get
   `FaceParams`, never color lists (spec §7.1). In controlled mode a pick only
-  calls `onChange`.
+  calls `onChange`. For each grid axis whose stored lattice doesn't hold the
+  displayed selection (`onLattice`), `view()` lays the lattice from it and centers
+  the window on it, so a parent's `value` is always a patch and the grid never
+  jumps from a stale `center` (spec §4.1).
 - `PickerFace` lays out depth label, ceiling, grid region (axis labels, four
   strips, grid), footer (zoom, hints); `DepthPanel` is the grid region's sibling,
   and the grid region is `inert` while expanded. Source order follows the tab
@@ -38,7 +41,7 @@ Files `src/picker/HslPicker.tsx`, `PickerFace.tsx`.
 ## How to Verify
 
 `vp test`: confirm returns the rounded selection; cancel calls `onCancel`;
-controlled mode — a pick calls `onChange` but the ring moves only when `value`
+controlled mode — a pick calls `onChange` but the selection mark moves only when `value`
 changes, and a new `value` moves it; tabbing from the close button visits the
 controls in the §8 order. Stories: `PickerFace` composed, `HslPicker`
 interactive (uncontrolled and controlled); a11y addon clean.

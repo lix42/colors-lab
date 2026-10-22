@@ -107,72 +107,72 @@ describe("faceLayout + patchColor", () => {
 describe("faceLayout: a center apart from the selection", () => {
   const sel = { h: 210, s: 64, l: 56 };
 
-  it("lays the grid out around the center, with the ring on the selection", () => {
+  it("lays the grid out around the center, with the selection mark on the selection", () => {
     // zoom 2 on S: step 6.25, window of 5 around the center 50 is 37.5…62.5, which holds 64's
-    // nearest value 62.5, so the window stays put and the ring sits on it
+    // nearest value 62.5, so the window stays put and the mark sits on it
     const face: Face = { depth: "h", x: "s", y: "l" };
-    const { params, ring } = faceLayout(face, { ...sel, s: 50 }, sel, 2);
+    const { params, mark } = faceLayout(face, { ...sel, s: 50 }, sel, 2);
     expect(params.s.base).toBe(37.5);
-    expect(ring.col).toBe(4);
-    expect(ring.kind).toBe("approx");
+    expect(mark.col).toBe(4);
+    expect(mark.kind).toBe("approx");
   });
 
   it("re-centers when the selection's nearest value is outside the window", () => {
     const face: Face = { depth: "h", x: "s", y: "l" };
-    const { params, ring } = faceLayout(face, { ...sel, s: 20 }, sel, 2);
+    const { params, mark } = faceLayout(face, { ...sel, s: 20 }, sel, 2);
     expect(params.s.base).toBe(50); // centered on 64's nearest value, 62.5
-    expect(ring.col).toBe(2);
+    expect(mark.col).toBe(2);
   });
 
-  it("re-centers when the selection is below the window, keeping the ring on the grid", () => {
+  it("re-centers when the selection is below the window, keeping the mark on the grid", () => {
     // center 90 snaps to the lattice value 87.5, so the window is 75…100; the selection 64
     // (nearest 62.5) is below it
     const face: Face = { depth: "h", x: "s", y: "l" };
-    const { params, ring } = faceLayout(face, { ...sel, s: 90 }, sel, 2);
+    const { params, mark } = faceLayout(face, { ...sel, s: 90 }, sel, 2);
     expect(params.s.base).toBe(50);
-    expect(ring).toMatchObject({ col: 2, kind: "approx" });
+    expect(mark).toMatchObject({ col: 2, kind: "approx" });
   });
 
-  it("keeps an exact ring when the center sits above the selection", () => {
+  it("keeps an exact mark when the center sits above the selection", () => {
     const face: Face = { depth: "h", x: "s", y: "l" };
     // both axes on a lattice value at zoom 2: S 62.5 (step 6.25) and L 50 (step 100/24)
     const exact = { ...sel, s: 62.5, l: 50 };
-    const { params, ring } = faceLayout(face, { ...exact, s: 75 }, exact, 2);
+    const { params, mark } = faceLayout(face, { ...exact, s: 75 }, exact, 2);
     expect(params.s.base).toBe(62.5);
-    expect(ring).toMatchObject({ col: 0, kind: "exact" });
+    expect(mark).toMatchObject({ col: 0, kind: "exact" });
   });
 
   it("keeps the window while the selection is within half a step of the edge", () => {
     // zoom 2 on S: the window from center 50 ends at 62.5; 65 is nearer 62.5 than 68.75
     const face: Face = { depth: "h", x: "s", y: "l" };
-    const { params, ring } = faceLayout(face, { ...sel, s: 50 }, { ...sel, s: 65 }, 2);
+    const { params, mark } = faceLayout(face, { ...sel, s: 50 }, { ...sel, s: 65 }, 2);
     expect(params.s.base).toBe(37.5);
-    expect(ring).toMatchObject({ col: 4, kind: "approx" });
+    expect(mark).toMatchObject({ col: 4, kind: "approx" });
   });
 });
 
-describe("faceLayout: ring", () => {
+describe("faceLayout: selection mark", () => {
   it("is exact on a lattice selection, at the nearest column and row", () => {
     // zoom 0: hue 216 is column 2 (72, 144, 216, 288, 0); saturation 50 is the middle row
-    const { ring } = faceLayout(START_FACE, { h: 216, s: 50, l: 56 }, { h: 216, s: 50, l: 56 }, 0);
-    expect(ring).toEqual({ col: 2, row: 3, kind: "exact" });
+    const { mark } = faceLayout(START_FACE, { h: 216, s: 50, l: 56 }, { h: 216, s: 50, l: 56 }, 0);
+    expect(mark).toEqual({ col: 2, row: 3, kind: "exact" });
   });
 
   it("sits on the top row for S 100 and the bottom row for S 0", () => {
     expect(
-      faceLayout(START_FACE, { h: 216, s: 100, l: 56 }, { h: 216, s: 100, l: 56 }, 0).ring.row,
+      faceLayout(START_FACE, { h: 216, s: 100, l: 56 }, { h: 216, s: 100, l: 56 }, 0).mark.row,
     ).toBe(0);
     expect(
-      faceLayout(START_FACE, { h: 216, s: 0, l: 56 }, { h: 216, s: 0, l: 56 }, 0).ring.row,
+      faceLayout(START_FACE, { h: 216, s: 0, l: 56 }, { h: 216, s: 0, l: 56 }, 0).mark.row,
     ).toBe(GRID_ROWS - 1);
   });
 
   it("is approx when either axis is between patches", () => {
     expect(
-      faceLayout(START_FACE, { h: 210, s: 50, l: 56 }, { h: 210, s: 50, l: 56 }, 0).ring.kind,
+      faceLayout(START_FACE, { h: 210, s: 50, l: 56 }, { h: 210, s: 50, l: 56 }, 0).mark.kind,
     ).toBe("approx");
     expect(
-      faceLayout(START_FACE, { h: 216, s: 51, l: 56 }, { h: 216, s: 51, l: 56 }, 0).ring.kind,
+      faceLayout(START_FACE, { h: 216, s: 51, l: 56 }, { h: 216, s: 51, l: 56 }, 0).mark.kind,
     ).toBe("approx");
   });
 
@@ -180,17 +180,17 @@ describe("faceLayout: ring", () => {
     // S on x: 56.25 at zoom 4 (step 1.5625) is stored as 56.3; at zoom 0 it lies between 50 and 75
     const face: Face = { depth: "l", x: "s", y: "h" };
     const fine = { h: 0, s: 56.3, l: 56 };
-    expect(faceLayout(face, fine, fine, 4).ring.kind).toBe("exact");
-    expect(faceLayout(face, fine, fine, 0).ring.kind).toBe("approx");
+    expect(faceLayout(face, fine, fine, 4).mark.kind).toBe("exact");
+    expect(faceLayout(face, fine, fine, 0).mark.kind).toBe("approx");
   });
 
-  it("the ringed patch's color is the selection when exact", () => {
+  it("the marked patch's color is the selection when exact", () => {
     let exactCases = 0;
     for (const [face, zoom, sel, center] of cases) {
-      const { params, ring } = faceLayout(face, center, sel, zoom);
-      if (ring.kind !== "exact") continue;
+      const { params, mark } = faceLayout(face, center, sel, zoom);
+      if (mark.kind !== "exact") continue;
       exactCases++;
-      expect(patchColor(params, ring.col, ring.row)).toEqual(sel);
+      expect(patchColor(params, mark.col, mark.row)).toEqual(sel);
     }
     expect(exactCases).toBeGreaterThan(0);
   });
