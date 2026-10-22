@@ -17,7 +17,7 @@ the DOM and transitions can compute their target before anything moves.
 Spec [§3.6](../../hsl-picker/design-spec.md#36-picker-state). File `src/hsl/state.ts`.
 
 - `PickerState { face, selection, lattice, center, zoom, expanded }`, where
-  `lattice` is the stored axis lattice per grid variable (`cube/axis`).
+  `lattice` is the stored `FaceLattice`, one lattice per grid axis (`cube/axis`).
 - `PickerAction`: `pick`, `reachEnd`, `setDepth`, `turn`, `zoom`,
   `toggleExpanded`, `move`.
 - `initialPickerState(initial?)` — START_FACE, zoom 0, collapsed, default

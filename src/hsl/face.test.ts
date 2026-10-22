@@ -7,12 +7,13 @@ import {
   faceLayout,
   faceVars,
   GRID_COLUMNS,
+  layFaceLattice,
   GRID_ROWS,
   patchBackground,
   patchColor,
   peekStrips,
 } from "./face";
-import { axisWindow, type ZoomLevel } from "./lattice";
+import { axisWindow, laidWindow, layLattice, type ZoomLevel } from "./axis";
 
 const ALL_FACES: Face[] = [
   { depth: "l", x: "h", y: "s" },
@@ -37,8 +38,10 @@ const withVar = (base: Hsl, v: Variable, value: number): Hsl => ({ ...base, [v]:
 
 // Independent of faceLayout: each patch's color straight from the two axis windows.
 const referenceGrid = (face: Face, center: Hsl, sel: Hsl, zoom: ZoomLevel): Hsl[][] => {
-  const wx = axisWindow(face.x, GRID_COLUMNS, zoom, center[face.x], sel[face.x]);
-  const wy = axisWindow(face.y, GRID_ROWS, zoom, center[face.y], sel[face.y]);
+  const lx = layLattice(face.x, GRID_COLUMNS, zoom, sel[face.x]);
+  const ly = layLattice(face.y, GRID_ROWS, zoom, sel[face.y]);
+  const wx = axisWindow(face.x, GRID_COLUMNS, lx, center[face.x], sel[face.x]);
+  const wy = axisWindow(face.y, GRID_ROWS, ly, center[face.y], sel[face.y]);
   return Array.from({ length: GRID_ROWS }, (_, row) =>
     Array.from({ length: GRID_COLUMNS }, (_, col) =>
       roundHsl(
@@ -47,6 +50,10 @@ const referenceGrid = (face: Face, center: Hsl, sel: Hsl, zoom: ZoomLevel): Hsl[
     ),
   );
 };
+
+// The face as a turn or zoom lays it: the lattice from the selection, the window around `center`.
+const layout = (face: Face, center: Hsl, sel: Hsl, zoom: ZoomLevel) =>
+  faceLayout(face, layFaceLattice(face, sel, zoom), center, sel);
 
 // Every case runs with the window centered on the selection and with a center a few patches
 // away, so nothing may quietly assume the two are the same.
@@ -67,7 +74,7 @@ const name = "face %j, zoom %d, selection %j, center %j";
 
 describe("faceLayout + patchColor", () => {
   it.each(cases)(`${name}: matches the reference grid at every cell`, (face, zoom, sel, center) => {
-    const { params } = faceLayout(face, center, sel, zoom);
+    const { params } = layout(face, center, sel, zoom);
     const ref = referenceGrid(face, center, sel, zoom);
     for (let row = 0; row < GRID_ROWS; row++) {
       for (let col = 0; col < GRID_COLUMNS; col++) {
@@ -77,23 +84,19 @@ describe("faceLayout + patchColor", () => {
   });
 
   it("puts the y maximum on the top row and the depth constant", () => {
-    const { params } = faceLayout(
-      START_FACE,
-      { h: 210, s: 64, l: 56 },
-      { h: 210, s: 64, l: 56 },
-      0,
-    );
+    // S 50 is on the nominal 7-row grid, so the rows run from 100 down to 0
+    const { params } = layout(START_FACE, { h: 210, s: 50, l: 56 }, { h: 210, s: 50, l: 56 }, 0);
     expect(patchColor(params, 0, 0).s).toBe(100);
     expect(patchColor(params, 0, GRID_ROWS - 1).s).toBe(0);
     expect(params.l).toEqual({ base: 56, perCol: 0, perRow: 0 });
   });
 
   it("leaves hue bases unnormalized", () => {
-    // x: zoom 3, step 9, window from -9; y: hue on rows with the top row past 360
+    // x: zoom 3, step 9 through 5, window from 5 − 2 · 9; y: hue on rows with the top row past 360
     expect(
-      faceLayout(START_FACE, { h: 5, s: 50, l: 50 }, { h: 5, s: 50, l: 50 }, 3).params.h.base,
-    ).toBe(-9);
-    const onY = faceLayout(
+      layout(START_FACE, { h: 5, s: 50, l: 50 }, { h: 5, s: 50, l: 50 }, 3).params.h.base,
+    ).toBe(-13);
+    const onY = layout(
       { depth: "l", x: "s", y: "h" },
       { h: 355, s: 50, l: 50 },
       { h: 355, s: 50, l: 50 },
@@ -106,118 +109,100 @@ describe("faceLayout + patchColor", () => {
 
 describe("faceLayout: a center apart from the selection", () => {
   const sel = { h: 210, s: 64, l: 56 };
+  // S on x at zoom 2: 0 is out of reach from 64, so the lattice runs from 100 in steps of 6
+  const face: Face = { depth: "h", x: "s", y: "l" };
 
   it("lays the grid out around the center, with the selection mark on the selection", () => {
-    // zoom 2 on S: step 6.25, window of 5 around the center 50 is 37.5…62.5, which holds 64's
-    // nearest value 62.5, so the window stays put and the mark sits on it
-    const face: Face = { depth: "h", x: "s", y: "l" };
-    const { params, mark } = faceLayout(face, { ...sel, s: 50 }, sel, 2);
-    expect(params.s.base).toBe(37.5);
+    const { params, mark } = layout(face, { ...sel, s: 52 }, sel, 2);
+    expect(params.s.base).toBe(40); // 40, 46, 52, 58, 64
     expect(mark.col).toBe(4);
-    expect(mark.kind).toBe("approx");
   });
 
-  it("re-centers when the selection's nearest value is outside the window", () => {
-    const face: Face = { depth: "h", x: "s", y: "l" };
-    const { params, mark } = faceLayout(face, { ...sel, s: 20 }, sel, 2);
-    expect(params.s.base).toBe(50); // centered on 64's nearest value, 62.5
+  it("re-centers when the selection is outside the window", () => {
+    const { params, mark } = layout(face, { ...sel, s: 20 }, sel, 2);
+    expect(params.s.base).toBe(52); // centered on 64: 52 … 76
     expect(mark.col).toBe(2);
   });
 
   it("re-centers when the selection is below the window, keeping the mark on the grid", () => {
-    // center 90 snaps to the lattice value 87.5, so the window is 75…100; the selection 64
-    // (nearest 62.5) is below it
-    const face: Face = { depth: "h", x: "s", y: "l" };
-    const { params, mark } = faceLayout(face, { ...sel, s: 90 }, sel, 2);
-    expect(params.s.base).toBe(50);
-    expect(mark).toMatchObject({ col: 2, kind: "approx" });
+    // center 90: the window is 76 … 100, and 64 is below it
+    const { params, mark } = layout(face, { ...sel, s: 90 }, sel, 2);
+    expect(params.s.base).toBe(52);
+    expect(mark.col).toBe(2);
   });
 
-  it("keeps an exact mark when the center sits above the selection", () => {
-    const face: Face = { depth: "h", x: "s", y: "l" };
-    // both axes on a lattice value at zoom 2: S 62.5 (step 6.25) and L 50 (step 100/24)
-    const exact = { ...sel, s: 62.5, l: 50 };
-    const { params, mark } = faceLayout(face, { ...exact, s: 75 }, exact, 2);
-    expect(params.s.base).toBe(62.5);
-    expect(mark).toMatchObject({ col: 0, kind: "exact" });
+  it("keeps the selection on an edge patch when the center sits above it", () => {
+    const { params, mark } = layout(face, { ...sel, s: 76 }, sel, 2);
+    expect(params.s.base).toBe(64);
+    expect(mark.col).toBe(0);
   });
 
-  it("keeps the window while the selection is within half a step of the edge", () => {
-    // zoom 2 on S: the window from center 50 ends at 62.5; 65 is nearer 62.5 than 68.75
-    const face: Face = { depth: "h", x: "s", y: "l" };
-    const { params, mark } = faceLayout(face, { ...sel, s: 50 }, { ...sel, s: 65 }, 2);
-    expect(params.s.base).toBe(37.5);
-    expect(mark).toMatchObject({ col: 4, kind: "approx" });
+  it("uses the stored lattice, not one laid from the current selection", () => {
+    // laid from S 64 at 1× (0, 21.3, 42.7, 64, 85.3); then 21.3 is picked
+    const lattice = {
+      x: layLattice("s", GRID_COLUMNS, 0, 64),
+      y: layLattice("l", GRID_ROWS, 0, 56),
+    };
+    const picked = { ...sel, s: 21.3 };
+    const before = layout(face, sel, sel, 0);
+    const after = faceLayout(face, lattice, sel, picked);
+    expect(after.params).toEqual(before.params);
+    expect(after.mark.col).toBe(1);
+    expect(patchColor(after.params, after.mark.col, after.mark.row)).toEqual(picked);
   });
 });
 
 describe("faceLayout: selection mark", () => {
-  it("is exact on a lattice selection, at the nearest column and row", () => {
-    // zoom 0: hue 216 is column 2 (72, 144, 216, 288, 0); saturation 50 is the middle row
-    const { mark } = faceLayout(START_FACE, { h: 216, s: 50, l: 56 }, { h: 216, s: 50, l: 56 }, 0);
-    expect(mark).toEqual({ col: 2, row: 3, kind: "exact" });
+  it("is at the selection's column and row", () => {
+    // zoom 0: hue runs through 216 (column 2 of 5); saturation 50 is the middle row of 7
+    const { mark } = layout(START_FACE, { h: 216, s: 50, l: 56 }, { h: 216, s: 50, l: 56 }, 0);
+    expect(mark).toEqual({ col: 2, row: 3 });
   });
 
   it("sits on the top row for S 100 and the bottom row for S 0", () => {
     expect(
-      faceLayout(START_FACE, { h: 216, s: 100, l: 56 }, { h: 216, s: 100, l: 56 }, 0).mark.row,
+      layout(START_FACE, { h: 216, s: 100, l: 56 }, { h: 216, s: 100, l: 56 }, 0).mark.row,
     ).toBe(0);
-    expect(
-      faceLayout(START_FACE, { h: 216, s: 0, l: 56 }, { h: 216, s: 0, l: 56 }, 0).mark.row,
-    ).toBe(GRID_ROWS - 1);
+    expect(layout(START_FACE, { h: 216, s: 0, l: 56 }, { h: 216, s: 0, l: 56 }, 0).mark.row).toBe(
+      GRID_ROWS - 1,
+    );
   });
 
-  it("is approx when either axis is between patches", () => {
-    expect(
-      faceLayout(START_FACE, { h: 210, s: 50, l: 56 }, { h: 210, s: 50, l: 56 }, 0).mark.kind,
-    ).toBe("approx");
-    expect(
-      faceLayout(START_FACE, { h: 216, s: 51, l: 56 }, { h: 216, s: 51, l: 56 }, 0).mark.kind,
-    ).toBe("approx");
-  });
-
-  it("is approx after zooming out from a fine pick, exact at the zoom it was picked", () => {
-    // S on x: 56.25 at zoom 4 (step 1.5625) is stored as 56.3; at zoom 0 it lies between 50 and 75
+  it("is still on the selection after zooming out from a fine pick", () => {
+    // S on x: 56.3, picked at zoom 4, is a patch again once zoom 0 lays the lattice from it
     const face: Face = { depth: "l", x: "s", y: "h" };
     const fine = { h: 0, s: 56.3, l: 56 };
-    expect(faceLayout(face, fine, fine, 4).mark.kind).toBe("exact");
-    expect(faceLayout(face, fine, fine, 0).mark.kind).toBe("approx");
+    for (const zoom of [4, 0] as const) {
+      const { params, mark } = layout(face, fine, fine, zoom);
+      expect(patchColor(params, mark.col, mark.row)).toEqual(fine);
+    }
   });
 
-  it("the marked patch's color is the selection when exact", () => {
-    let exactCases = 0;
-    for (const [face, zoom, sel, center] of cases) {
-      const { params, mark } = faceLayout(face, center, sel, zoom);
-      if (mark.kind !== "exact") continue;
-      exactCases++;
+  it.each(cases)(
+    `${name}: the marked patch's color is the selection`,
+    (face, zoom, sel, center) => {
+      const { params, mark } = layout(face, center, sel, zoom);
       expect(patchColor(params, mark.col, mark.row)).toEqual(sel);
-    }
-    expect(exactCases).toBeGreaterThan(0);
-  });
+    },
+  );
 });
 
 describe("faceColors", () => {
-  it("lists all 35 patch colors, top row first", () => {
+  it("lists every patch color, top row first", () => {
     const sel = { h: 210, s: 64, l: 56 };
-    const { params } = faceLayout(START_FACE, sel, sel, 1);
+    const { params } = layout(START_FACE, sel, sel, 1);
     expect(faceColors(params)).toEqual(referenceGrid(START_FACE, sel, sel, 1).flat());
   });
 });
 
 describe("peekStrips", () => {
   it.each(cases)(`${name}: each strip matches its axisWindow definition`, (face, zoom, sel) => {
-    // strips ignore `center`: they always use the re-centered windows a turn would show
+    // strips ignore the stored lattice and `center`: they use the windows a turn would lay
     const strips = peekStrips(face, sel, zoom);
-    const depthX = axisWindow(
-      face.depth,
-      GRID_COLUMNS,
-      zoom,
-      sel[face.depth],
-      sel[face.depth],
-    ).values;
-    const depthY = axisWindow(face.depth, GRID_ROWS, zoom, sel[face.depth], sel[face.depth]).values;
-    const ys = axisWindow(face.y, GRID_ROWS, zoom, sel[face.y], sel[face.y]).values;
-    const xs = axisWindow(face.x, GRID_COLUMNS, zoom, sel[face.x], sel[face.x]).values;
+    const depthX = laidWindow(face.depth, GRID_COLUMNS, zoom, sel[face.depth]).values;
+    const depthY = laidWindow(face.depth, GRID_ROWS, zoom, sel[face.depth]).values;
+    const ys = laidWindow(face.y, GRID_ROWS, zoom, sel[face.y]).values;
+    const xs = laidWindow(face.x, GRID_COLUMNS, zoom, sel[face.x]).values;
     const cell = (depth: number, v: Variable, value: number) =>
       roundHsl(withVar(withVar(sel, face.depth, depth), v, value));
     for (let row = 0; row < GRID_ROWS; row++) {
@@ -233,9 +218,9 @@ describe("peekStrips", () => {
 
   it.each(cases)(`${name}: strips match the edges of the face a turn shows`, (face, zoom, sel) => {
     const strips = peekStrips(face, sel, zoom);
-    // a turn re-centers, so the face a turn shows is laid out from the selection
-    const sideways = faceLayout(turn(face, "horizontal"), sel, sel, zoom).params;
-    const upright = faceLayout(turn(face, "vertical"), sel, sel, zoom).params;
+    // a turn lays the lattice from the selection and re-centers on it
+    const sideways = layout(turn(face, "horizontal"), sel, sel, zoom).params;
+    const upright = layout(turn(face, "vertical"), sel, sel, zoom).params;
     for (let row = 0; row < GRID_ROWS; row++) {
       expect(patchColor(strips.left, 0, row)).toEqual(patchColor(sideways, 0, row));
       expect(patchColor(strips.right, 0, row)).toEqual(patchColor(sideways, GRID_COLUMNS - 1, row));
@@ -282,7 +267,7 @@ describe("faceVars", () => {
   // Across all six faces every slot is non-zero somewhere, so no two keys stay interchangeable
   it.each(ALL_FACES)("%j: maps every property to its own affine term", (face) => {
     const sel = { h: 210, s: 64, l: 56 };
-    const { params } = faceLayout(face, sel, sel, 2);
+    const { params } = layout(face, sel, sel, 2);
     expect(faceVars(params)).toEqual({
       "--h-base": params.h.base,
       "--h-col": params.h.perCol,
@@ -298,12 +283,12 @@ describe("faceVars", () => {
 
   it("returns all nine properties, never a subset", () => {
     const vars = faceVars(
-      faceLayout(START_FACE, { h: 5, s: 64, l: 56 }, { h: 5, s: 64, l: 56 }, 3).params,
+      layout(START_FACE, { h: 5, s: 64, l: 56 }, { h: 5, s: 64, l: 56 }, 3).params,
     );
     expect(Object.keys(vars).sort()).toEqual(
       ["h", "s", "l"].flatMap((v) => [`--${v}-base`, `--${v}-col`, `--${v}-row`]).sort(),
     );
-    expect(vars).toMatchObject({ "--h-base": -9, "--h-col": 9, "--h-row": 0, "--l-base": 56 });
+    expect(vars).toMatchObject({ "--h-base": -13, "--h-col": 9, "--h-row": 0, "--l-base": 56 });
   });
 });
 
