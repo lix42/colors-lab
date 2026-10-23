@@ -3,7 +3,7 @@ title: Selection-anchored axis lattice
 status: done
 deps: [cube/model]
 summary: layLattice/onLattice/axisWindow on a stored lattice; no approx mark; edge rule; lattice.ts renamed axis.ts
-done: 2026-10-21
+done: "2026-10-21 #15"
 ---
 
 # Selection-anchored axis lattice

@@ -36,8 +36,8 @@ File `src/picker/FaceGrid.tsx`.
   `params`, so it follows a depth step; nothing else on a patch is reactive.
 - A click dispatches `pick` with `patchColor(props.params, col, row)`, computing only
   that patch's color. A pick on an edge patch also starts the edge-rule timer: after
-  the double-click interval (Proposed: 300 ms) it dispatches `reachEnd`, unless a
-  double-click arrived first (spec §3.4, §5.3).
+  the double-click interval (Proposed: 300 ms) it dispatches `reachEnd` with the state
+  the pick left as `after`, unless a double-click arrived first (spec §3.4, §5.3).
 - Roving tabindex on the marked patch; arrows dispatch `move` then `.focus()` the
   new marked patch; Shift + Arrow `turn`; `+`/`-` `zoom`.
 - After a turn or zoom moves the mark, focus follows it: if focus was in the grid,

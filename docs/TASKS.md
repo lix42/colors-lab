@@ -64,20 +64,20 @@ graph TD
 **HSL cube model**
 > The pure HSL cube: faces and turns, the zoom lattice, face data, the picker reducer, and gesture classifiers. No Solid or DOM.
 
-- [ ] [Gesture classifiers](tasks/cube/gestures.md) — pointerGesture, pinchProgress, velocity, wheel reducer in gestures.ts · **waits on** `cube/reducer`
-- [ ] [Picker reducer](tasks/cube/reducer.md) — PickerState, PickerAction, pickerReducer in state.ts
+- [ ] [Gesture classifiers](tasks/cube/gestures.md) — pointerGesture, pinchProgress, velocity, wheel reducer in gestures.ts
 - [x] [Selection-anchored axis lattice](tasks/cube/axis.md) — layLattice/onLattice/axisWindow on a stored lattice; no approx mark; edge rule; lattice.ts renamed axis.ts
 - [x] [Cube, lattice and face data](tasks/cube/model.md) — cube.ts, lattice.ts, face.ts: faces, turns, axisWindow, faceLayout, patchColor, faceColors, peekStrips, ceilingStops, CSS formula strings
+- [x] [Picker reducer](tasks/cube/reducer.md) — PickerState, PickerAction, pickerReducer in state.ts
 
 ### picker — [progress](progress/picker.md)
 **Picker components**
 > Solid components of `HslPicker`, the adaptive theme, transitions and gesture wiring.
 
 - [ ] [PickerFace and HslPicker composition](tasks/picker/compose.md) — public HslPicker: controlled/uncontrolled, confirm/cancel, live region · **waits on** `picker/face-grid`, `picker/depth-panel`, `picker/peek-zoom`
-- [ ] [Ceiling, DepthPanel and DepthSlider](tasks/picker/depth-panel.md) — collapsed ceiling button, expanded panel with vertical depth slider, focus handling · **waits on** `cube/reducer`, `picker/theme`
-- [ ] [FaceGrid](tasks/picker/face-grid.md) — patch radiogroup (5 x 7 to start): colors computed in CSS, roving focus, keyboard, selection-mark variants, labels only on the marked patch, stories · **waits on** `cube/reducer`, `picker/theme`
+- [ ] [Ceiling, DepthPanel and DepthSlider](tasks/picker/depth-panel.md) — collapsed ceiling button, expanded panel with vertical depth slider, focus handling · **waits on** `picker/theme`
+- [ ] [FaceGrid](tasks/picker/face-grid.md) — patch radiogroup (5 x 7 to start): colors computed in CSS, roving focus, keyboard, selection-mark variants, labels only on the marked patch, stories · **waits on** `picker/theme`
 - [ ] [Gesture wiring](tasks/picker/gesture-wiring.md) — useGestures.ts: tracked drag and pinch, panel drag, wheel, dblclick · **waits on** `cube/gestures`, `picker/compose`, `picker/transitions`
-- [ ] [PeekStrip and ZoomControl](tasks/picker/peek-zoom.md) — edge peek-strip buttons (colors computed in CSS) and the zoom -/level/+ control · **waits on** `cube/reducer`, `picker/theme`
+- [ ] [PeekStrip and ZoomControl](tasks/picker/peek-zoom.md) — edge peek-strip buttons (colors computed in CSS) and the zoom -/level/+ control · **waits on** `picker/theme`
 - [ ] [Theme, schemes and fonts](tasks/picker/theme.md) — Panda light/dark schemes, surface texture, fonts, theme.ts (screenScheme, tintedSurface)
 - [ ] [Transitions and animations](tasks/picker/transitions.md) — motion.ts + transition.ts: triggered/tracked turn, zoom, panel drop; settling; reduced motion · **waits on** `picker/compose`
 

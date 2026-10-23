@@ -2,11 +2,13 @@ import { describe, expect, it } from "vite-plus/test";
 import { normalizeHue, roundChannel } from "../color/hsl";
 import {
   type AxisLattice,
+  axisStep,
   axisWindow,
   edgeRelay,
   laidWindow,
   layLattice,
   onLattice,
+  windowCenter,
   type ZoomLevel,
 } from "./axis";
 
@@ -341,5 +343,87 @@ describe("edgeRelay", () => {
   it("never applies to hue", () => {
     const hue = layLattice("h", 5, 1, 350);
     expect(edgeRelay("h", 5, 1, hue, 350, 278)).toBeNull();
+  });
+});
+
+describe("windowCenter", () => {
+  const hue = layLattice("h", 5, 1, 210); // 36° steps; window 138 … 282 around 210
+
+  it("is the stored center while the selection is in its window", () => {
+    expect(windowCenter("h", 5, hue, 210, 282)).toBe(210);
+  });
+
+  it("is the selection when the selection is outside that window", () => {
+    expect(windowCenter("h", 5, hue, 210, 354)).toBe(354);
+  });
+});
+
+describe("axisStep", () => {
+  const s64 = layLattice("s", 5, 2, 64); // origin 100, step 6; window 52 … 76 around 64
+
+  it("steps to the neighbouring patch inside the window, keeping center and lattice", () => {
+    expect(axisStep("s", 5, 2, s64, 64, 64, 1)).toEqual({ value: 70, center: 64, lattice: s64 });
+    expect(axisStep("s", 5, 2, s64, 64, 64, -1)).toEqual({ value: 58, center: 64, lattice: s64 });
+  });
+
+  it("scrolls one step past an edge, keeping the selection on the edge patch", () => {
+    const up = axisStep("s", 5, 2, s64, 64, 76, 1)!;
+    expect(up.value).toBe(82);
+    expect(axisWindow("s", 5, s64, up.center, up.value)).toMatchObject({
+      values: [58, 64, 70, 76, 82],
+      selectedIndex: 4,
+    });
+    const down = axisStep("s", 5, 2, s64, 64, 52, -1)!;
+    expect(down.value).toBe(46);
+    expect(axisWindow("s", 5, s64, down.center, down.value)).toMatchObject({
+      values: [46, 52, 58, 64, 70],
+      selectedIndex: 0,
+    });
+  });
+
+  it("stops S/L at the last lattice value inside 0–100", () => {
+    const top = layLattice("s", 5, 0, 75); // 0, 25, 50, 75, 100
+    expect(axisStep("s", 5, 0, top, 75, 100, 1)).toBeNull();
+    expect(axisStep("s", 5, 0, top, 75, 0, -1)).toBeNull();
+  });
+
+  it("steps from the window the selection shows when it is outside the stored center's", () => {
+    const hue = layLattice("h", 5, 1, 210); // shown around 354: 282, 318, 354, 30, 66
+    expect(axisStep("h", 5, 1, hue, 210, 354, 1)).toEqual({ value: 30, center: 354, lattice: hue });
+  });
+
+  it("past the last value, lays the lattice on an end that isn't a patch and steps onto it", () => {
+    const s = layLattice("s", 7, 0, 90); // 0, 15, … 90; 100 is 10 away
+    expect(axisStep("s", 7, 0, s, 90, 90, 1)).toEqual({
+      value: 100,
+      center: 100,
+      lattice: { origin: 100, step: 10 },
+    });
+  });
+
+  it("does the same toward 0", () => {
+    const s = layLattice("s", 7, 0, 10); // 10, 25, … 100; 0 is 10 away
+    expect(axisStep("s", 7, 0, s, 10, 10, -1)).toEqual({
+      value: 0,
+      center: 0,
+      lattice: { origin: 0, step: 10 },
+    });
+  });
+
+  it("wraps hue and keeps its center in [0, 360)", () => {
+    const hue = layLattice("h", 5, 1, 10); // 298, 334, 10, 46, 82
+    const step = axisStep("h", 5, 1, hue, 10, 298, -1)!;
+    expect(step.value).toBe(262);
+    expect(step.center).toBeGreaterThanOrEqual(0);
+    expect(step.center).toBeLessThan(360);
+  });
+
+  it("applies the edge rule to where it lands", () => {
+    const s = layLattice("s", 5, 0, 64); // 0, 21.3, 42.7, 64, 85.3
+    expect(axisStep("s", 5, 0, s, 64, 64, 1)).toEqual({
+      value: 85.3,
+      center: 100,
+      lattice: { origin: 100, step: 100 - 85.3 },
+    });
   });
 });

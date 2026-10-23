@@ -24,7 +24,8 @@ Files `src/picker/HslPicker.tsx`, `PickerFace.tsx`.
   `FaceParams`, never color lists (spec §7.1). In controlled mode a pick only
   calls `onChange`. For each grid axis whose stored lattice doesn't hold the
   displayed selection (`onLattice`), `view()` lays the lattice from it and centers
-  the window on it, so a parent's `value` is always a patch and the grid never
+  the window on it, and on the other axes stores the window's actual center
+  (`syncLattice`), so a parent's `value` is always a patch and the grid never
   jumps from a stale `center` (spec §4.1).
 - `PickerFace` lays out depth label, ceiling, grid region (axis labels, four
   strips, grid), footer (zoom, hints); `DepthPanel` is the grid region's sibling,

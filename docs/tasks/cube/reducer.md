@@ -1,8 +1,9 @@
 ---
 title: Picker reducer
-status: todo
+status: done
 deps: [cube/model, cube/axis]
 summary: PickerState, PickerAction, pickerReducer in state.ts
+done: "2026-10-22 #16"
 ---
 
 # Picker reducer
@@ -30,14 +31,22 @@ Spec [§3.6](../../hsl-picker/design-spec.md#36-picker-state). File `src/hsl/sta
     (Deviation from requirements); S/L stop at 0 and 100.
   - When a `move` lands on an edge patch less than one step from an S/L end, the
     edge rule lays the lattice on that end at once.
-  - `pick` never changes `center` or the lattice.
-  - `reachEnd` applies the edge rule after a pick, and returns the same object when
-    the rule doesn't apply.
+  - `pick` never changes `center` or the lattice for a patch; an off-lattice
+    color is re-laid by `syncLattice`.
+  - `reachEnd { after }` applies the edge rule after a pick, and returns the same
+    object when the rule doesn't apply or the grid differs from `after`'s (a stale
+    timer), compared by value since `view()` rebuilds the state.
   - Stored colors go through `roundHsl`.
-- Rework the uncommitted draft on top of `cube/axis`. Its edge scroll re-derives
-  `steps` and `half`; with the lattice stored explicitly that isn't needed. The
-  review's "off-lattice value on the other axis" case can't happen any more,
-  because the selection is always on both lattices.
+- `move` is `axisStep` (in `axis.ts`) on each axis: the neighbouring patch, a
+  one-step scroll past the window's edge, then the edge rule. Past the last S/L
+  lattice value it tries the edge rule first, so an end that isn't a patch is
+  still reachable from the keyboard. The reducer holds no
+  lattice index math.
+- `syncLattice(state)` re-lays any grid axis whose lattice doesn't hold the
+  selection and re-centers it; on the others it stores the center the window
+  actually uses (`windowCenter`), so a host value off the window doesn't make the
+  next pick move the grid. `pick` ends with it, and `HslPicker`'s `view()` uses
+  it for a parent's controlled `value` (spec §4.1).
 
 ## How to Verify
 
@@ -48,4 +57,8 @@ Spec [§3.6](../../hsl-picker/design-spec.md#36-picker-state). File `src/hsl/sta
   S/L 100 and left across hue 0.
 - The edge rule fires for a `move` onto an edge patch and for `reachEnd`, and doesn't
   fire when the end is a whole step away.
-- After any `pick` or `move`, the selection is on the stored lattice.
+- After any `pick` or `move`, the selection is on the stored lattice, and the
+  stored center is the one the window uses.
+- A host value on the lattice but off the window: the next pick and arrow keys keep
+  that window.
+- A stale `reachEnd` after a turn does nothing.
